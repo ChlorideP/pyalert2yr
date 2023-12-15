@@ -21,10 +21,22 @@ __all__ = ['INIClass', 'INISection', 'scanIncludes']
 
 
 class INISection(MutableMapping):
+    @staticmethod
+    def __bool_conv(val: str):
+        return val[0].lower() in ('1', 'y', 't')
+
+    @staticmethod
+    def __list_conv(val: str):
+        return val.split(',')
+
     __VAL_CONV = {
         True: "yes",
         False: "no",
         None: ""
+    }
+    __CONVERTER = {
+        bool: __bool_conv,
+        list: __list_conv
     }
 
     def __init__(self, section: str, _super=None, **kwargs):
@@ -37,7 +49,7 @@ class INISection(MutableMapping):
     def __setitem__(self, k, v):
         if isinstance(v, (list, tuple, set)):
             v = ','.join(map(str, v))
-        self.__pairs[k] = self.__VAL_CONV.get(v, str(v))
+        self.__pairs[str(k)] = self.__VAL_CONV.get(v, str(v))
 
     def __delitem__(self, k):
         del self.__pairs[k]
@@ -77,7 +89,7 @@ class INISection(MutableMapping):
             sect = sect.parent
         return sect
 
-    def get(self, key, converter: Callable[[str], object], default=None):
+    def get(self, key, converter: Callable[[str], object] = str, default=None):
         """
         Returns converted value if key is reachable (i.e.
         could be found in current context), otherwise `default`.
@@ -87,10 +99,8 @@ class INISection(MutableMapping):
             value: str = target[key]
             if not value:  # null value
                 return None
-            elif converter is bool:
-                return value[0].lower() in ('1', 'y', 't')
             else:
-                return converter(value)
+                return self.__CONVERTER.get(converter, converter)(value)
         else:
             return default
 
@@ -117,7 +127,7 @@ class INISection(MutableMapping):
             raise TypeError(type(section))
         self._name = section._name
         self.parent = section.parent
-        self.__pairs = dict(section.items(useraw=True))
+        self.__pairs = dict(section.items())
 
 
 class INIClass(Iterable):
@@ -131,6 +141,7 @@ class INIClass(Iterable):
         return self.__raw[key]
 
     def __setitem__(self, key, value):
+        key = str(key)
         if key not in self.__raw:
             self.__raw[key] = INISection(key)
 
@@ -156,8 +167,8 @@ class INIClass(Iterable):
             return tuple()
 
         ret = []
-        for i in self.__raw[section].values(useraw=True):
-            if i not in ret:
+        for i in self.__raw[section].values():
+            if i not in ret and i != '':
                 ret.append(i)
         return ret
 
@@ -206,7 +217,7 @@ class INIClass(Iterable):
         """
         for i in self.__raw.values():
             fp.write(f"{repr(i)}\n")
-            for key, value in i.items(useraw=True):
+            for key, value in i.items():
                 fp.write(f"{key}{pairing}{value}\n")
             fp.write("\n" * blankline)
 
