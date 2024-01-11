@@ -39,4 +39,5 @@ if __name__ == '__main__':
 欢迎提交功能需求（
 
 - [INI](https://github.com/ClLab-YR/py_yrmap_tools/blob/master/docs/ini.md)
+- [CSF](https://github.com/ClLab-YR/py_yrmap_tools/blob/master/docs/csf.md)
 - [用于 Git 的地图拆分与组合](https://github.com/ClLab-YR/py_yrmap_tools/blob/master/docs/export.md)
