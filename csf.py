@@ -14,6 +14,7 @@ but in my opinion, way more complex than just editing .json / .xml.
 """
 
 import json
+import warnings
 from collections.abc import Iterator, MutableMapping
 from ctypes import c_ubyte
 from io import FileIO
@@ -25,7 +26,8 @@ from xml.dom import minidom
 from xml.etree import ElementTree as et
 
 __all__ = ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
-           'CsfHead', 'CsfVal', 'CsfDocument', 'InvalidCsfException',
+           'CsfHead', 'CsfVal', 'CsfDocument',
+           'InvalidCsfException', 'ValueListOversizeWarning',
            'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1']
 
 
@@ -78,6 +80,11 @@ class InvalidCsfException(Exception):
     pass
 
 
+class ValueListOversizeWarning(UserWarning):
+    """To hint that 'RASResEditor' may not be able to open."""
+    pass
+
+
 # def _codingvalue(valdata: bytes, start=0, lenvaldata=None):
 def _codingvalue(valdata: bytearray):
     # bytes would throw TypeError
@@ -110,7 +117,15 @@ class CsfDocument(MutableMapping):
         try:
             self.__data[lbl][0] = CsfVal(val)
         except Exception:
-            self.__data[lbl] = val if isinstance(val, list) else [val]
+            if isinstance(val, list):
+                if len(val) > 1:
+                    warnings.warn(
+                        f'Over 2 values in "{lbl}". '
+                        "There may be no editors able to open it.",
+                        ValueListOversizeWarning, stacklevel=2)
+                self.__data[lbl] = val
+            else:
+                self.__data[lbl] = [val]
 
     def __delitem__(self, lbl: str) -> None:
         return self.__data.__delitem__(lbl)

@@ -10,7 +10,8 @@
 >>> import pyalert2yr.csf as csf
 >>> csf.__all__
 ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
- 'CsfHead', 'CsfVal', 'CsfDocument', 'InvalidCsfException',
+ 'CsfHead', 'CsfVal', 'CsfDocument',
+ 'InvalidCsfException', 'ValueListOversizeWarning',
  'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1']
 ```
 
@@ -44,7 +45,7 @@ class CsfDocument(MutableMapping):
         单值标签只返回第一个（相当于帮你省去 [0] 下标访问）"""
     def __setitem__(self, label: str, val: CsfVal | List[CsfVal]):
         """传入列表：直接覆盖。传入单个 CsfVal：覆盖 [0] 号位。
-        注：多值标签游戏里只会读第一个值。"""
+        注意：游戏只会读第一个值。红警风暴语言编辑器也只能读出两个值。"""
     def __delitem__(self, label: str):
     def __iter__(self):
         """标签—值字典的迭代器"""
