@@ -302,7 +302,7 @@ def importJSONV2(jsonfilepath, encoding='utf-8') -> CsfDocument:
     return ret
 
 
-def csfToXMLV1(self: CsfDocument, xmlfilepath, indent=2):
+def csfToXMLV1(self: CsfDocument, xmlfilepath, indent='\t'):
     """Convert to Shimakaze Csf-XML V1 Document.
     Only `utf-8` supported."""
     def parseCsfVal(elem_node: et.Element, v: CsfVal):
@@ -328,7 +328,7 @@ def csfToXMLV1(self: CsfDocument, xmlfilepath, indent=2):
         tmp.append(lbl)
     formatted = minidom.parseString(et.tostring(root, 'utf-8'))
     xmllines = formatted.toprettyxml(
-        indent * " ", encoding='utf-8').decode().split('\n')
+        indent, encoding='utf-8').decode().split('\n')
     with open(xmlfilepath, 'w', encoding='utf-8') as fp:
         fp.write(f'{xmllines[0]}\n')
         fp.write(XML_MODEL)

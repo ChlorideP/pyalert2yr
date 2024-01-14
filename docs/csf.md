@@ -78,21 +78,12 @@ class CsfDocument(MutableMapping):
 > `jsonpath`: JSON 文件路径  
 > `encoding`: 编码
 
-* `csfToXMLV1(csf_doc, xmlpath, indent=2)`：
+* `csfToXMLV1(csf_doc, xmlpath, indent='\t')`：
 将 CSF 另存为 Shimakaze XML V1 文档。  
 由于 XML 的编码定义不多，为避免意外，统一采用`utf-8`编码。
 > `csf_doc`: `CsfDocument` 实例  
 > `xmlpath`: XML 文档路径  
-> `indent`: 每个块缩进多少空格
-
-> ~~原本有想过允许用户`\t`缩进，但是这样导入反而不好排查，遂作罢。~~  
-> ~~比如，`indent="114514"`的话……~~
-> ```xml
-> <Resources ...>
->   <Label name="ssks:ddtms">第一行
-> 114514114514第二行</Label>
-> </Resources>
-> ```
+> `indent`: 如何缩进（默认一个 Tab 键）
 
 * `importXMLV1(xmlpath)`：
 初始化 CSF，并导入指定 XML 文档。
