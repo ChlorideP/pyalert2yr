@@ -6,25 +6,29 @@
 
 Support .csf files IO and JSON, XML files import/export.
 
-The JSON formatting follows [Shimakaze](https://frg2089.github.io)'s schema,
-while the XML's **partially** does.
+The JSON and XML formatting follows [Shimakaze]\
+(https://frg2089.github.io)'s schema.
 
 Direct operation on CsfDocument instance is also supported,
 but in my opinion, way more complex than just editing .json / .xml.
 """
 
 import json
+import warnings
 from collections.abc import Iterator, MutableMapping
 from ctypes import c_ubyte
 from io import FileIO
+from re import S as FULL_MATCH
+from re import compile as regex
 from struct import pack, unpack
 from typing import Any, Dict, List, NamedTuple, Optional, TypedDict, Union
 from xml.dom import minidom
 from xml.etree import ElementTree as et
 
 __all__ = ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
-           'CsfHead', 'CsfVal', 'CsfDocument', 'InvalidCsfException',
-           'csfToJSONV2', 'csfToXML', 'importJSONV2', 'importXML']
+           'CsfHead', 'CsfVal', 'CsfDocument',
+           'InvalidCsfException', 'ValueListOversizeWarning',
+           'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1']
 
 
 CSF_TAG = " FSC"
@@ -45,10 +49,16 @@ LANG_LIST = [
     'zh'  # Chinese
 ]
 
+SHIMAKAZE_SCHEMA = 'https://shimakazeproject.github.io/Schemas'
 JSON_HEAD = {
-    "$schema": "https://shimakazeproject.github.io/json/csf/v2/schema.json",
+    "$schema": f"{SHIMAKAZE_SCHEMA}/json/csf/v2.json",
     "protocol": 2
 }
+XML_SCHEMA_TYPENS = 'http://www.w3.org/2001/XMLSchema'
+XML_MODEL = ("<?xml-model "
+             f'href="{SHIMAKAZE_SCHEMA}/xml/csf/v1.xsd" '
+             'type="application/xml" '
+             f'schematypens="{XML_SCHEMA_TYPENS}"?>\n')
 
 
 class CsfHead(NamedTuple):
@@ -67,6 +77,11 @@ class CsfVal(TypedDict):
 
 class InvalidCsfException(Exception):
     """To record errors when reading .CSF files."""
+    pass
+
+
+class ValueListOversizeWarning(UserWarning):
+    """To hint that 'RASResEditor' may not be able to open."""
     pass
 
 
@@ -102,7 +117,15 @@ class CsfDocument(MutableMapping):
         try:
             self.__data[lbl][0] = CsfVal(val)
         except Exception:
-            self.__data[lbl] = val if isinstance(val, list) else [val]
+            if isinstance(val, list):
+                if len(val) > 1:
+                    warnings.warn(
+                        f'Over 2 values in "{lbl}". '
+                        "There may be no editors able to open it.",
+                        ValueListOversizeWarning, stacklevel=2)
+                self.__data[lbl] = val
+            else:
+                self.__data[lbl] = [val]
 
     def __delitem__(self, lbl: str) -> None:
         return self.__data.__delitem__(lbl)
@@ -198,12 +221,12 @@ class CsfDocument(MutableMapping):
             numstr += len(i)
         return CsfHead(self.version, len(self), numstr, 0, self.language)
 
-    def __writeLabels(self, fp: FileIO, lbl: str, val: List[CsfVal]):
+    def __writelabels(self, fp: FileIO, lbl: str, val: List[CsfVal]):
         fp.write(pack(f'<4sLL{len(lbl)}s',
                       LBL_TAG.encode('ascii'), len(val), len(lbl),
                       lbl.encode('ascii')))
         for i in val:  # value
-            lv, isev = len(i['value']), i.get('extra') is not None
+            lv, isev = len(i['value']), bool(i.get('extra'))  # !None !empty
             fp.write(pack(
                 f'<4sL{lv << 1}s',
                 (EVAL_TAG if isev else VAL_TAG).encode('ascii'), lv,
@@ -220,43 +243,28 @@ class CsfDocument(MutableMapping):
                           CSF_TAG.encode('ascii'), *self.header))
             # 0x18
             for k, v in self.__data.items():
-                self.__writeLabels(fp, k, v)
-
-
-def _tojsonvalue(val: Union[CsfVal, List[CsfVal]]) -> dict:
-    if isinstance(val, list):
-        ret = {'values': [_tojsonvalue(i) for i in val]}
-    else:
-        ret = val.copy()
-        if '\n' in ret['value']:
-            ret['value'] = ret['value'].split('\n')
-        if ret['extra'] is None:
-            del ret['extra']
-    return ret
-
-
-def _fromjson(val: Union[Dict[str, Any], List[str], str]):
-    if isinstance(val, str):  # one-line val
-        ret = CsfVal(value=val, extra=None)
-    elif isinstance(val, list):  # multi-line val
-        ret = CsfVal(value='\n'.join(val), extra=None)
-    elif isinstance(val, dict) and 'values' not in val:  # Eval
-        ret = CsfVal(value=val['value'], extra=val.get('extra'))
-    else:
-        ret = []
-        for i in val['values']:  # multiple values, needs further process.
-            ret.append(_fromjson(i))
-    return ret
+                self.__writelabels(fp, k, v)
 
 
 def csfToJSONV2(self: CsfDocument, jsonfilepath, encoding='utf-8', indent=2):
     """Convert to Shimakaze Csf-JSON v2 Document."""
+    def toJSONValue(val: Union[CsfVal, List[CsfVal]]) -> dict:
+        if isinstance(val, list):
+            ret = {'values': [toJSONValue(i) for i in val]}
+        else:
+            ret = val.copy()
+            if '\n' in ret['value']:
+                ret['value'] = ret['value'].split('\n')
+            if not ret['extra']:
+                del ret['extra']
+        return ret
+
     ret = JSON_HEAD.copy()
     ret['version'] = self.version
     ret['language'] = self.language
     ret['data'] = {}
     for k, v in self.items():
-        v = _tojsonvalue(v)
+        v = toJSONValue(v)
         if 'values' not in v and 'extra' not in v:
             v = v['value']
         ret['data'][k] = v
@@ -265,56 +273,90 @@ def csfToJSONV2(self: CsfDocument, jsonfilepath, encoding='utf-8', indent=2):
 
 
 def importJSONV2(jsonfilepath, encoding='utf-8') -> CsfDocument:
+    def fromJSON(val: Union[Dict[str, Any], List[str], Optional[str]]):
+        if val is None:  # latest standard - empty val
+            ret = CsfVal(value="", extra=None)
+        elif isinstance(val, str):  # one-line val
+            ret = CsfVal(value=val, extra=None)
+        elif isinstance(val, list):  # multi-line val
+            ret = CsfVal(value='\n'.join(val), extra=None)
+        elif isinstance(val, dict) and 'values' not in val:  # Eval
+            ret = CsfVal(value=val['value'], extra=val.get('extra'))
+            if val['value'] is None:
+                ret['value'] = ""
+            elif isinstance(val['value'], list):
+                ret['value'] = '\n'.join(val['value'])
+        else:
+            ret = []
+            for i in val['values']:  # multiple values, needs further process.
+                ret.append(fromJSON(i))
+        return ret
+
     ret = CsfDocument()
     with open(jsonfilepath, 'r', encoding=encoding) as fp:
         src = json.load(fp)
     ret.version = src['version']
     ret.language = src['language']
     for k, v in src['data'].items():
-        ret[k] = _fromjson(v)
+        ret[k] = fromJSON(v)
     return ret
 
 
-def csfToXML(self: CsfDocument, xmlfilepath, encoding='utf-8', indent='\t'):
-    """Convert to XML Document."""
-    root = et.Element('Resources', {'Version': str(self.version),
-                                    'Language': str(self.language)})
+def csfToXMLV1(self: CsfDocument, xmlfilepath, indent='\t'):
+    """Convert to Shimakaze Csf-XML V1 Document.
+    Only `utf-8` supported."""
+    def parseCsfVal(elem_node: et.Element, v: CsfVal):
+        if v['extra']:  # not None && length > 0
+            elem_node.attrib['extra'] = v['extra']
+        elem_node.text = v['value']
+
+    root = et.Element('Resources', {'protocol': '1',
+                                    'version': str(self.version),
+                                    'language': str(self.language)})
     tmp = []
     for k, v in self.items():
         lbl = et.SubElement(root, 'Label', {'name': k})
         if isinstance(v, dict):
-            if v['extra'] is not None:
-                lbl.attrib['extra'] = v['extra']
-            lbl.text = v['value']
+            parseCsfVal(lbl, v)
         else:
             vals = et.SubElement(lbl, 'Values')
             lbl = [lbl, vals]
             for i in v:
                 ei = et.SubElement(vals, 'Value')
-                if i['extra'] is not None:
-                    ei.attrib['extra'] = i['extra']
-                ei.text = i['value']
+                parseCsfVal(ei, i)
                 lbl.append(ei)
         tmp.append(lbl)
-    # tree = et.ElementTree(root)
-    rawstring = et.tostring(root, encoding)
-    formatted = minidom.parseString(rawstring)
-    xmlstream = formatted.toprettyxml(encoding=encoding, indent=indent)
-    with open(xmlfilepath, 'wb') as fp:
-        fp.write(xmlstream)
+    formatted = minidom.parseString(et.tostring(root, 'utf-8'))
+    xmllines = formatted.toprettyxml(
+        indent, encoding='utf-8').decode().split('\n')
+    with open(xmlfilepath, 'w', encoding='utf-8') as fp:
+        fp.write(f'{xmllines[0]}\n')
+        fp.write(XML_MODEL)
+        cnt = 1
+        while cnt < len(xmllines):
+            fp.write(f'{xmllines[cnt]}\n')
+            cnt += 1
 
 
-def importXML(xmlfilepath) -> CsfDocument:
+def importXMLV1(xmlfilepath) -> CsfDocument:
+    # keep compat with external styled xml
+    indent_filter = regex(r'\n[ \t]+', FULL_MATCH)
     ret = CsfDocument()
-    tree = et.parse(xmlfilepath)
-    root = tree.getroot()  # Resources
-    ret.version = int(root.attrib.get('Version', '3'))
-    ret.language = int(root.attrib.get('Language', '0'))
+    root = et.parse(xmlfilepath).getroot()  # Resources
+    ret.version = int(root.attrib.get('version', '3'))
+    ret.language = int(root.attrib.get('language', '0'))
     for lbl in root:
         if (_ := list(lbl)) and _[0].tag == 'Values':  # multi values
-            lblvalue = [CsfVal(value=v.text, extra=v.attrib.get('extra'))
-                        for v in list(_[0])]
+            lblvalue = (CsfVal(value="", extra=None)
+                        if _[0].text is None
+                        else [CsfVal(value=indent_filter.sub('\n', v.text),
+                                     extra=v.attrib.get('extra'))
+                              for v in list(_[0])])
         else:
-            lblvalue = CsfVal(value=lbl.text, extra=lbl.attrib.get('extra'))
+            lbleval = lbl.attrib.get('extra')
+            lblvalue = (CsfVal(value=indent_filter.sub('\n', lbl.text),
+                               extra=lbleval)
+                        if lbl.text is not None
+                        else CsfVal(value="", extra=lbleval))
         ret[lbl.attrib['name']] = lblvalue
     return ret
