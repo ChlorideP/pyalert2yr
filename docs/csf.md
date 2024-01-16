@@ -3,15 +3,19 @@
 > 模块名：`csf`  
 > CSF 文件逻辑上看，就是个**连续存储**的字典。
 
-提供 CSF 文件的读取、存储，以及与 JSON XML 的相互转换。  
-转换出来的 JSON 遵循 [ShimakazeProject](https://github.com/ShimakazeProject) 编写的语义规范，XML 则部分遵循。
+提供 CSF 文件的读取、存储，以及与 JSON XML YAML 的相互转换。  
+转换出来的 JSON 遵循 [ShimakazeProject](https://github.com/ShimakazeProject) 编写的语义规范，XML 则部分遵循。  
+YAML 则简化处理，只接受纯文本键值对，不考虑额外值和值数组。同样地，简化 YAML 文档也遵守上面的语义规范。
+
+> 有条件的可以考虑 [Shimakaze.Sdk](#bibliography雾)。~~别的不说，至少他的 CSF 工具可以完美兼容我导出的 YAML 文档，反之就不一定了。~~  
 
 ```python
 >>> import pyalert2yr.csf as csf
 >>> csf.__all__
 ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
  'CsfHead', 'CsfVal', 'CsfDocument', 'InvalidCsfException',
- 'csfToJSONV2', 'csfToXML', 'importJSONV2', 'importXML']
+ 'csfToJSONV2', 'csfToXML', 'importJSONV2', 'importXML',
+ 'csfToSimpleYAML', 'importSimpleYAML']
 ```
 
 ## 可食用 API
@@ -73,6 +77,24 @@ class CsfDocument(MutableMapping):
 * `importXML(xmlpath)`：
 初始化 CSF，并导入指定 XML 文档。
 
+- `csfToSimpleYAML(csf_doc, yamlpath, encoding='utf-8', indent=2)`：
+将 CSF 另存为简化 YAML 文档。
+> `csf_doc`: `CsfDocument` 实例  
+> `yamlpath`: YAML 文件路径  
+> `encoding`: 编码  
+> `indent`: 每个块缩进多少空格
+
+> 注意：只会保存游戏实际显示的值字符串，
+> - 若标签对应多个值，只取第一个；
+> - 若第一个值存在额外记录`extra`，忽略该记录。
+
+- `importSimpleYAML(yamlpath, encoding='utf-8')`：
+初始化 CSF，并导入简化 YAML 文档。
+> `yamlpath`: YAML 文件路径  
+> `encoding`: 编码
+
+> 注意：尽可能只传入本模块导出的简化 YAML，`Shimakaze.Sdk.Csf.Converter`导出的 YAML 有可能报错！
+
 ## 常量
 
 ### 标识符 
@@ -119,9 +141,15 @@ class CsfHead(NamedTuple):
     language: int   # DWORD     # 0x14
 ```
 
-~~其实有想过给语言整个枚举类型，但是没什么必要。~~
+~~其实有想过给`language`整个枚举类型，但是没什么必要。~~
+
+## 后记
+
+我实际上是 WinPECMD 脚本出身的（笑），工作流也更偏向于随写随用的脚本。写所谓的 ~~`fa2py`~~ ~~`pymapra2`~~ `pyalert2yr`也是出于我个人的实用性考虑。
+
+SDK 虽然也是好东西，但毕竟是 WIP，离我心目中“服务整个作业流程，便于分发和部署”的目标还有点远，总归不如随手搓出来的实在（
 
 ## Bibliography（雾）
 1. Anonymous. [CSF File Format](https://modenc.renegadeprojects.com/CSF_File_Format). ModEnc. 2021.
 2. Frg2089. [Shimakaze's schemas](https://github.com/ShimakazeProject/Schemas). ShimakazeProject.
-3. Frg2089. [Shimakaze.Tools](https://github.com/ShimakazeProject/Shimakaze.Tools). ShimakazeProject.
+3. Frg2089. [Shimakaze.Sdk](https://github.com/ShimakazeProject/Shimakaze.Sdk). ShimakazeProject.

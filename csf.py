@@ -9,11 +9,15 @@ Support .csf files IO and JSON, XML files import/export.
 The JSON formatting follows [Shimakaze](https://frg2089.github.io)'s schema,
 while the XML's **partially** does.
 
+The SIMPLE YAML document, as it described, only support simple value,
+with just `label: str` pair form.
+
 Direct operation on CsfDocument instance is also supported,
-but in my opinion, way more complex than just editing .json / .xml.
+but in my opinion, way more complex than just editing text files.
 """
 
 import json
+import yaml
 from collections.abc import Iterator, MutableMapping
 from ctypes import c_ubyte
 from io import FileIO
@@ -24,7 +28,8 @@ from xml.etree import ElementTree as et
 
 __all__ = ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
            'CsfHead', 'CsfVal', 'CsfDocument', 'InvalidCsfException',
-           'csfToJSONV2', 'csfToXML', 'importJSONV2', 'importXML']
+           'csfToJSONV2', 'csfToXML', 'importJSONV2', 'importXML',
+           'csfToSimpleYAML', 'importSimpleYAML']
 
 
 CSF_TAG = " FSC"
@@ -49,6 +54,17 @@ JSON_HEAD = {
     "$schema": "https://shimakazeproject.github.io/json/csf/v2/schema.json",
     "protocol": 2
 }
+
+
+YAML_SPECIAL_SIGNS_1 = [
+    '_', '?', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|',
+    '>', '"', '%', ':'
+]
+YAML_SPECIAL_SIGNS_2 = "'"
+YAML_SCHEMA_HEADER = '# yaml-language-server: \
+$schema=https://shimakazeproject.github.io/Schemas/yaml/csf/metadata.yaml'
+YAML_SCHEMA_BODY = '# yaml-language-server: \
+$schema=https://shimakazeproject.github.io/Schemas/yaml/csf/v1.yaml'
 
 
 class CsfHead(NamedTuple):
@@ -112,6 +128,13 @@ class CsfDocument(MutableMapping):
 
     def __len__(self) -> int:
         return self.__data.__len__()
+
+    def getValidValue(self, label) -> Optional[str]:
+        """Get the value really read by `game*.exe`."""
+        try:
+            return self.__data[label][0].get('value', '')
+        except IndexError:
+            return None
 
     def setdefault(self, label, string, *, extra=None):
         """Append a label which doesn't exist in document,
@@ -317,4 +340,51 @@ def importXML(xmlfilepath) -> CsfDocument:
         else:
             lblvalue = CsfVal(value=lbl.text, extra=lbl.attrib.get('extra'))
         ret[lbl.attrib['name']] = lblvalue
+    return ret
+
+
+def csfToSimpleYAML(self: CsfDocument, yamlfilepath,
+                    encoding='utf-8', indent=2):
+    """Convert to SIMPLE yaml file."""
+    yaml_special_signs = YAML_SPECIAL_SIGNS_1.copy()
+    yaml_special_signs.append(YAML_SPECIAL_SIGNS_2)
+    # manual dump - - the pyyaml output is too ugly
+    with open(yamlfilepath, 'w', encoding='utf-8') as fp:
+        fp.write(f'{YAML_SCHEMA_HEADER}\n'
+                 f'lang: {self.language}\n'
+                 f'version: {self.version}\n'
+                 '---\n')  # header
+        fp.write(f'{YAML_SCHEMA_BODY}\n')  # body
+        for k in self.keys():
+            v = self.getValidValue(k)
+            if v is None:
+                v = "''"
+            elif '\n' in v:  # multi line (with (>-) or without (>) special)
+                prefix = '>\n'
+                for i in yaml_special_signs:
+                    if i in v:
+                        prefix = '>-\n'
+                        break
+                v = (prefix + v).replace('\n', f'\n{indent * " "}')
+            elif YAML_SPECIAL_SIGNS_2 in v:
+                v = f'"{v}"'
+            else:
+                for i in YAML_SPECIAL_SIGNS_1:
+                    if i in v:
+                        v = f"'{v}'"
+                        break
+            if ': ' in k:
+                k = f"'{k}'"
+            fp.write(f'{k}: {v}\n')
+
+
+def importSimpleYAML(yamlfilepath, encoding='utf-8') -> CsfDocument:
+    with open(yamlfilepath, 'r', encoding=encoding) as fp:
+        header, data = yaml.load_all(fp.read(), yaml.FullLoader)
+    ret = CsfDocument()
+    ret.language = header['lang']
+    ret.version = header['version']
+    for k, v in data.items():
+        # may there be some pure digits considered as int
+        ret[k] = CsfVal(value=str(v), extra=None)
     return ret
