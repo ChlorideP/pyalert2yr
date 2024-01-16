@@ -4,8 +4,8 @@
 > CSF 文件逻辑上看，就是个**连续存储**的字典。
 
 提供 CSF 文件的读取、存储，以及与 JSON XML YAML 的相互转换。  
-转换出来的 JSON 遵循 [ShimakazeProject](https://github.com/ShimakazeProject) 编写的语义规范，XML 则部分遵循。  
-YAML 则简化处理，只接受纯文本键值对，不考虑额外值和值数组。同样地，简化 YAML 文档也遵守上面的语义规范。
+转换出来的 JSON 和 XML 遵循 [ShimakazeProject](https://github.com/ShimakazeProject) 编写的语义规范。  
+YAML 则简化处理，尽管也遵循上述规范，但只接受纯文本键值对。
 
 > 有条件的可以考虑 [Shimakaze.Sdk](#bibliography雾)。~~别的不说，至少他的 CSF 工具可以完美兼容我导出的 YAML 文档，反之就不一定了。~~  
 
@@ -13,8 +13,9 @@ YAML 则简化处理，只接受纯文本键值对，不考虑额外值和值数
 >>> import pyalert2yr.csf as csf
 >>> csf.__all__
 ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
- 'CsfHead', 'CsfVal', 'CsfDocument', 'InvalidCsfException',
- 'csfToJSONV2', 'csfToXML', 'importJSONV2', 'importXML',
+ 'CsfHead', 'CsfVal', 'CsfDocument',
+ 'InvalidCsfException', 'ValueListOversizeWarning',
+ 'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
  'csfToSimpleYAML', 'importSimpleYAML']
 ```
 
@@ -48,7 +49,7 @@ class CsfDocument(MutableMapping):
         单值标签只返回第一个（相当于帮你省去 [0] 下标访问）"""
     def __setitem__(self, label: str, val: CsfVal | List[CsfVal]):
         """传入列表：直接覆盖。传入单个 CsfVal：覆盖 [0] 号位。
-        注：多值标签游戏里只会读第一个值。"""
+        注意：游戏只会读第一个值。红警风暴语言编辑器也只能读出两个值。"""
     def __delitem__(self, label: str):
     def __iter__(self):
         """标签—值字典的迭代器"""
@@ -67,15 +68,31 @@ class CsfDocument(MutableMapping):
 
 ### 格式转换：`csfToX` `importX`
 
+下列函数无需再配合`open()`开辟的缓冲区食用了。
+
 - `csfToJSONV2(csf_doc, jsonpath, encoding='utf-8', indent=2)`：
 将 CSF 另存为 Shimakaze JSON V2 格式。
+> `csf_doc`: `CsfDocument` 实例  
+> `jsonpath`: JSON 文件路径  
+> `encoding`: 编码  
+> `indent`: 每个块缩进多少空格  
+
 - `importJSONV2(jsonpath, encoding='utf-8')`：
 初始化 CSF，并导入指定 JSON 文件。
+> `jsonpath`: JSON 文件路径  
+> `encoding`: 编码
 
-* `csfToXML(csf_doc, xmlpath, encoding='utf-8', indent='\t')`：
-将 CSF 另存为 XML 文档。
-* `importXML(xmlpath)`：
+* `csfToXMLV1(csf_doc, xmlpath, indent='\t')`：
+将 CSF 另存为 Shimakaze XML V1 文档。  
+> `csf_doc`: `CsfDocument` 实例  
+> `xmlpath`: XML 文档路径  
+> `indent`: 如何缩进（默认一个 Tab 键）
+
+> 由于 XML 的编码定义不多，为避免意外，统一采用`utf-8`编码。
+
+* `importXMLV1(xmlpath)`：
 初始化 CSF，并导入指定 XML 文档。
+> `xmlpath`: XML 文档路径
 
 - `csfToSimpleYAML(csf_doc, yamlpath, encoding='utf-8', indent=2)`：
 将 CSF 另存为简化 YAML 文档。
