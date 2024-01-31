@@ -12,8 +12,8 @@ YAML 则简化处理，尽管也遵循上述规范，但只接受纯文本键值
 ```python
 >>> import pyalert2yr.csf as csf
 >>> csf.__all__
-['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
- 'CsfHead', 'CsfVal', 'CsfDocument',
+['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG',
+ 'CsfHead', 'CsfLang', 'CsfVal', 'CsfDocument',
  'InvalidCsfException', 'EditorIncompatibleWarning',
  'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
  'csfToSimpleYAML', 'importSimpleYAML']
@@ -114,7 +114,9 @@ class CsfDocument(MutableMapping):
 
 > 注意：尽可能只传入本模块导出的简化 YAML，`Shimakaze.Sdk.Csf.Converter`导出的 YAML 有可能报错！
 
-## 常量
+## 寄术细节
+
+关于`.csf`文件详细的读写脉络可以参看源代码和 ModEnc，恕不赘述。
 
 ### 标识符 
 共四个：`CSF_TAG` `LBL_TAG` `VAL_TAG` `EVAL_TAG`  
@@ -125,29 +127,30 @@ class CsfDocument(MutableMapping):
 > - 若标签首部`LBL_TAG = " LBL"`校验失败，游戏会忽略该标签，并尝试读接下来的 4B；我比较懒，失败了直接抛异常。
 > - 若值首部检验失败，不是`VAL_TAG = " RTS"`，也不是`EVAL_TAG = "WRTS"`，则记录非法，我选择抛异常。
 
-### 可选语言 `LANG_LIST`
-实际上 CSF 是支持多语言的。`CsfDocument`中的语言 ID 对应列表的下标。  
-列表按顺序列示如下。部分我知道的语言给出了中文对照。红红官方发行的语言用**粗体**表示。
+### 可选语言
+实际上 CSF 是支持多语言的。`CsfDocument`中的语言 ID 对应下列语言的序号。  
+部分我知道的语言给出了中文对照。红红官方发行的语言用**粗体**表示。
 
-- **en_US  英语-美国**
-- en_UK  英语-英国
-- **de    德语**
-- **fr    法语**
-- es    西班牙语
-- it    意大利语
-- jp    日语
-- Jabberwockie
-- **kr    韩语**
-- **zh    中文**
+0. **en_US  英语-美国**
+1. en_UK  英语-英国
+2. **de    德语**
+3. **fr    法语**
+4. es    西班牙语
+5. it    意大利语
+6. jp    日语
+7. Jabberwockie
+8. **kr    韩语**
+9. **zh    中文**
+
+上表在源代码中以枚举类`CsfLang`体现。~~当然实际上并没有用到。~~  
+Ares 另外引入了`-1`作为通用语，意指这个 CSF 文件兼容上述所有语言。
 
 说实话改这个意义也不大。目前流通的 CSF 文件语言 ID 都是 0，即`en_US`（英语-美国）。  
 可能原本是有多语言文本并存的打算吧。
 
-## 其他
+### CSF 首部
 
-### CSF 首部：`CsfHead`
-
-对应`.csf`文件的前 0x18 字节。目前仅用于`.csf`文件的读写。  
+`CsfHead`类对应`.csf`文件的前 0x18 字节。目前仅用于该文件类型的读写。  
 **一经初始化即只读**。
 
 ```python

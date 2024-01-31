@@ -19,6 +19,7 @@ import json
 import warnings
 from collections.abc import Iterator, MutableMapping
 from ctypes import c_ubyte
+from enum import Enum
 from io import FileIO
 from re import S as FULL_MATCH
 from re import compile as regex
@@ -29,8 +30,8 @@ from xml.etree import ElementTree as et
 
 import yaml
 
-__all__ = ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
-           'CsfHead', 'CsfVal', 'CsfDocument',
+__all__ = ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG',
+           'CsfHead', 'CsfLang', 'CsfVal', 'CsfDocument',
            'InvalidCsfException', 'EditorIncompatibleWarning',
            'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
            'csfToSimpleYAML', 'importSimpleYAML']
@@ -41,18 +42,6 @@ LBL_TAG = " LBL"
 VAL_TAG = " RTS"
 EVAL_TAG = "WRTS"
 
-LANG_LIST = [
-    'en_US',
-    'en_UK',
-    'de',  # German
-    'fr',  # French
-    'es',  # Spanish
-    'it',  # Italian
-    'jp',  # Japanese
-    'Jabberwockie',
-    'kr',  # Korean
-    'zh'  # Chinese
-]
 
 SHIMAKAZE_SCHEMA = 'https://shimakazeproject.github.io/Schemas'
 JSON_HEAD = {
@@ -82,6 +71,21 @@ class CsfHead(NamedTuple):
     numvalues: int
     unused: int
     language: int
+
+
+class CsfLang(Enum):
+    Universal = -1  # Ares implemented
+    en_US = 0
+    en_UK = 1
+    de = 2  # German
+    fr = 3  # French
+    es = 4  # Spanish
+    it = 5  # Italian
+    jp = 6  # Japanese
+    Jabberwockie = 7
+    kr = 8  # Korean
+    zh = 9  # Chinese
+    # int gt 10 as Unknown.
 
 
 class CsfVal(TypedDict):
