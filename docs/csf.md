@@ -12,9 +12,9 @@ YAML 则简化处理，尽管也遵循上述规范，但只接受纯文本键值
 ```python
 >>> import pyalert2yr.csf as csf
 >>> csf.__all__
-['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
- 'CsfHead', 'CsfVal', 'CsfDocument',
- 'InvalidCsfException', 'ValueListOversizeWarning',
+['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG',
+ 'CsfHead', 'CsfLang', 'CsfVal', 'CsfDocument',
+ 'InvalidCsfException', 'EditorIncompatibleWarning',
  'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
  'csfToSimpleYAML', 'importSimpleYAML']
 ```
@@ -58,6 +58,8 @@ class CsfDocument(MutableMapping):
     @property
     def header(self) -> CsfHead:
         """返回最新的 CSF 首部信息"""
+    def getValidValue(self, label) -> Optional[str]:
+        """返回游戏实际读取的键值。"""
     def setdefault(self, label, string, *, extra=None):
         """若文档中不存在指定标签，则追加指定键值"""
     def readCsf(self, filepath):
@@ -112,7 +114,9 @@ class CsfDocument(MutableMapping):
 
 > 注意：尽可能只传入本模块导出的简化 YAML，`Shimakaze.Sdk.Csf.Converter`导出的 YAML 有可能报错！
 
-## 常量
+## 寄术细节
+
+关于`.csf`文件详细的读写脉络可以参看源代码和 ModEnc，恕不赘述。
 
 ### 标识符 
 共四个：`CSF_TAG` `LBL_TAG` `VAL_TAG` `EVAL_TAG`  
@@ -123,29 +127,30 @@ class CsfDocument(MutableMapping):
 > - 若标签首部`LBL_TAG = " LBL"`校验失败，游戏会忽略该标签，并尝试读接下来的 4B；我比较懒，失败了直接抛异常。
 > - 若值首部检验失败，不是`VAL_TAG = " RTS"`，也不是`EVAL_TAG = "WRTS"`，则记录非法，我选择抛异常。
 
-### 可选语言 `LANG_LIST`
-实际上 CSF 是支持多语言的。`CsfDocument`中的语言 ID 对应列表的下标。  
-列表按顺序列示如下。部分我知道的语言给出了中文对照。红红官方发行的语言用**粗体**表示。
+### 可选语言
+实际上 CSF 是支持多语言的。`CsfDocument`中的语言 ID 对应下列语言的序号。  
+部分我知道的语言给出了中文对照。红红官方发行的语言用**粗体**表示。
 
-- **en_US  英语-美国**
-- en_UK  英语-英国
-- **de    德语**
-- **fr    法语**
-- es    西班牙语
-- it    意大利语
-- jp    日语
-- Jabberwockie
-- **kr    韩语**
-- **zh    中文**
+0. **en_US  英语-美国**
+1. en_UK  英语-英国
+2. **de    德语**
+3. **fr    法语**
+4. es    西班牙语
+5. it    意大利语
+6. jp    日语
+7. Jabberwockie
+8. **kr    韩语**
+9. **zh    中文**
+
+上表在源代码中以枚举类`CsfLang`体现。~~当然实际上并没有用到。~~  
+Ares 另外引入了`-1`作为通用语，意指这个 CSF 文件兼容上述所有语言。
 
 说实话改这个意义也不大。目前流通的 CSF 文件语言 ID 都是 0，即`en_US`（英语-美国）。  
 可能原本是有多语言文本并存的打算吧。
 
-## 其他
+### CSF 首部
 
-### CSF 首部：`CsfHead`
-
-对应`.csf`文件的前 0x18 字节。目前仅用于`.csf`文件的读写。  
+`CsfHead`类对应`.csf`文件的前 0x18 字节。目前仅用于该文件类型的读写。  
 **一经初始化即只读**。
 
 ```python
@@ -158,13 +163,20 @@ class CsfHead(NamedTuple):
     language: int   # DWORD     # 0x14
 ```
 
-~~其实有想过给`language`整个枚举类型，但是没什么必要。~~
-
 ## 后记
 
-我实际上是 WinPECMD 脚本出身的（笑），工作流也更偏向于随写随用的脚本。写所谓的 ~~`fa2py`~~ ~~`pymapra2`~~ `pyalert2yr`也是出于我个人的实用性考虑。
+做地图免不了要~~跟文案打交~~写任务文本嘛。说实话也是为了自己干活方便。  
 
-SDK 虽然也是好东西，但毕竟是 WIP，离我心目中“服务整个作业流程，便于分发和部署”的目标还有点远，总归不如随手搓出来的实在（
+[Zero Fanker](https://github.com/Zero-Fanker)算是最早开始在红警 MOD 这里大规模应用 Git 的案例了，
+[岛风酱](https://github.com/frg2089)也力荐把地图用 Git 管理起来，后来我也这么做了。  
+
+CSF 本是二进制，但究其本质也不过是个字典。于是岛风干脆考虑把它转化成文本文件，于是`Shimakaze.Utils.Csf`出现了。  
+在数次迭代之后，岛风终于发现，现有的工具集是有极限的，全力去搞他的 RA2 MOD SDK 去了。  
+
+我是没有做 mod 那种抱负，做地图需要打交道的组件也不多（大概？），
+所以还是决定另立门户，用 Python 实现一个，然后集成进我负责的地图项目里面。~~至少只剩 FA2 或者船新地编需要下崽辣。~~
+
+目前就这样罢。以后的事留给以后的我操心好了。~~希望那时的我没事（笑）~~
 
 ## Bibliography（雾）
 1. Anonymous. [CSF File Format](https://modenc.renegadeprojects.com/CSF_File_Format). ModEnc. 2021.
