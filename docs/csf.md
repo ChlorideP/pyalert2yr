@@ -14,7 +14,7 @@ YAML 则简化处理，尽管也遵循上述规范，但只接受纯文本键值
 >>> csf.__all__
 ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
  'CsfHead', 'CsfVal', 'CsfDocument',
- 'InvalidCsfException', 'ValueListOversizeWarning',
+ 'InvalidCsfException', 'EditorIncompatibleWarning',
  'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
  'csfToSimpleYAML', 'importSimpleYAML']
 ```
@@ -58,6 +58,8 @@ class CsfDocument(MutableMapping):
     @property
     def header(self) -> CsfHead:
         """返回最新的 CSF 首部信息"""
+    def getValidValue(self, label) -> Optional[str]:
+        """返回游戏实际读取的键值。"""
     def setdefault(self, label, string, *, extra=None):
         """若文档中不存在指定标签，则追加指定键值"""
     def readCsf(self, filepath):
@@ -158,13 +160,20 @@ class CsfHead(NamedTuple):
     language: int   # DWORD     # 0x14
 ```
 
-~~其实有想过给`language`整个枚举类型，但是没什么必要。~~
-
 ## 后记
 
-我实际上是 WinPECMD 脚本出身的（笑），工作流也更偏向于随写随用的脚本。写所谓的 ~~`fa2py`~~ ~~`pymapra2`~~ `pyalert2yr`也是出于我个人的实用性考虑。
+做地图免不了要~~跟文案打交~~写任务文本嘛。说实话也是为了自己干活方便。  
 
-SDK 虽然也是好东西，但毕竟是 WIP，离我心目中“服务整个作业流程，便于分发和部署”的目标还有点远，总归不如随手搓出来的实在（
+[Zero Fanker](https://github.com/Zero-Fanker)算是最早开始在红警 MOD 这里大规模应用 Git 的案例了，
+[岛风酱](https://github.com/frg2089)也力荐把地图用 Git 管理起来，后来我也这么做了。  
+
+CSF 本是二进制，但究其本质也不过是个字典。于是岛风干脆考虑把它转化成文本文件，于是`Shimakaze.Utils.Csf`出现了。  
+在数次迭代之后，岛风终于发现，现有的工具集是有极限的，全力去搞他的 RA2 MOD SDK 去了。  
+
+我是没有做 mod 那种抱负，做地图需要打交道的组件也不多（大概？），
+所以还是决定另立门户，用 Python 实现一个，然后集成进我负责的地图项目里面。~~至少只剩 FA2 或者船新地编需要下崽辣。~~
+
+目前就这样罢。以后的事留给以后的我操心好了。~~希望那时的我没事（笑）~~
 
 ## Bibliography（雾）
 1. Anonymous. [CSF File Format](https://modenc.renegadeprojects.com/CSF_File_Format). ModEnc. 2021.

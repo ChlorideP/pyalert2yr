@@ -31,7 +31,7 @@ import yaml
 
 __all__ = ['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG', 'LANG_LIST',
            'CsfHead', 'CsfVal', 'CsfDocument',
-           'InvalidCsfException', 'ValueListOversizeWarning',
+           'InvalidCsfException', 'EditorIncompatibleWarning',
            'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
            'csfToSimpleYAML', 'importSimpleYAML']
 
@@ -94,12 +94,11 @@ class InvalidCsfException(Exception):
     pass
 
 
-class ValueListOversizeWarning(UserWarning):
+class EditorIncompatibleWarning(UserWarning):
     """To hint that 'RASResEditor' may not be able to open."""
     pass
 
 
-# def _codingvalue(valdata: bytes, start=0, lenvaldata=None):
 def _codingvalue(valdata: bytearray):
     # bytes would throw TypeError
     valdata = bytearray(valdata)
@@ -136,7 +135,7 @@ class CsfDocument(MutableMapping):
                     warnings.warn(
                         f'Over 2 values in "{lbl}". '
                         "There may be no editors able to open it.",
-                        ValueListOversizeWarning, stacklevel=2)
+                        EditorIncompatibleWarning, stacklevel=2)
                 self.__data[lbl] = val
             else:
                 self.__data[lbl] = [val]
@@ -247,7 +246,8 @@ class CsfDocument(MutableMapping):
                       LBL_TAG.encode('ascii'), len(val), len(lbl),
                       lbl.encode('ascii')))
         for i in val:  # value
-            lv, isev = len(i['value']), bool(i.get('extra'))  # !None !empty
+            lv = len(i['value'])
+            isev = bool(i.get('extra'))  # not None, not empty
             fp.write(pack(
                 f'<4sL{lv << 1}s',
                 (EVAL_TAG if isev else VAL_TAG).encode('ascii'), lv,
@@ -259,10 +259,8 @@ class CsfDocument(MutableMapping):
     def writeCsf(self, filepath):
         # force little endian.
         with open(filepath, 'wb') as fp:
-            # 00(0x00) - 24(0x17)
             fp.write(pack('<4sLLLLL',  # header
                           CSF_TAG.encode('ascii'), *self.header))
-            # 0x18
             for k, v in self.__data.items():
                 self.__writelabels(fp, k, v)
 
@@ -327,26 +325,22 @@ def csfToXMLV1(self: CsfDocument, xmlfilepath, indent='\t'):
     """Convert to Shimakaze Csf-XML V1 Document.
     Only `utf-8` supported."""
     def parseCsfVal(elem_node: et.Element, v: CsfVal):
-        if v['extra']:  # not None && length > 0
+        if v['extra']:  # not None, not empty
             elem_node.attrib['extra'] = v['extra']
         elem_node.text = v['value']
 
     root = et.Element('Resources', {'protocol': '1',
                                     'version': str(self.version),
                                     'language': str(self.language)})
-    tmp = []
     for k, v in self.items():
         lbl = et.SubElement(root, 'Label', {'name': k})
         if isinstance(v, dict):
             parseCsfVal(lbl, v)
         else:
             vals = et.SubElement(lbl, 'Values')
-            lbl = [lbl, vals]
             for i in v:
                 ei = et.SubElement(vals, 'Value')
                 parseCsfVal(ei, i)
-                lbl.append(ei)
-        tmp.append(lbl)
     formatted = minidom.parseString(et.tostring(root, 'utf-8'))
     xmllines = formatted.toprettyxml(
         indent, encoding='utf-8').decode().split('\n')
@@ -388,8 +382,8 @@ def csfToSimpleYAML(self: CsfDocument, yamlfilepath,
     """Convert to SIMPLE yaml file."""
     yaml_special_signs = YAML_SPECIAL_SIGNS_1.copy()
     yaml_special_signs.append(YAML_SPECIAL_SIGNS_2)
-    # manual dump - - the pyyaml output is too ugly
-    with open(yamlfilepath, 'w', encoding='utf-8') as fp:
+    # manual dump as the pyyaml output is too ugly
+    with open(yamlfilepath, 'w', encoding=encoding) as fp:
         fp.write(f'{YAML_SCHEMA_HEADER}\n'
                  f'lang: {self.language}\n'
                  f'version: {self.version}\n'
