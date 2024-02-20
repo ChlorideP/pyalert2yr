@@ -19,26 +19,26 @@ pip install -r requirements.txt
 
 ## 食用 - Usage
 Unlike the common way (pip) to deploy the python package, this lib needs **manual downloading (or git cloning)**.  
-In case, I would like to consider it just submodule, embedded in another git repository, like [RA2MapSplitTemplate](https://github.com/ClLab-YR/RA2MapSplitTemplate).  
+In case, I would like to consider it just submodule, embedded in another git repository, like [RA2YRMapSplitTemplate](https://github.com/ClLab-YR/RA2YRMapSplitTemplate).  
 基本上开袋即食。
 
 As python would import package just by the directory name, you have to be careful with it.  
 Basically, here are some tips when deciding Ur package name:  
 唯一需要注意的是，你的工具集文件夹将**直接作为包名导入**。  
 因此，最好先检查文件夹名称：
-- MUST NOT begin with digits or `_`
-- MUST NOT consists with special chars within ` `, except `_`
-- It's case sensitive
-- **不能**以数字或下划线开头
-- **不能**含有空格或其他特殊字符（除了下划线）
-- 包名**区分大小写**。
+- MUST NOT begin with digits or `_`  
+  **不能**以数字或下划线开头
+- MUST NOT consists with special chars within ` `, except `_`  
+  **不能**含有空格或其他特殊字符（除了下划线）
+- It's case sensitive  
+  包名**区分大小写**。
 
 ```python
 from pyalert2yr.csf import importJSONV2
 
 if __name__ == '__main__':
     ccwc = importJSONV2('~/ES/stringtable114514.json')
-    ccwc['TXT_RELEASE_NOTE'] = {'value': 'Extreme Starry v0.6'}
+    ccwc['TXT_RELEASE_NOTE'] = 'Extreme Starry v0.6'
     ccwc.writeCsf('~/ES/stringtable99.csf')
 ```
 
@@ -47,6 +47,7 @@ if __name__ == '__main__':
 The following API documents are available in **Simplified Chinese only**.  
 You may get English help by `help()` function.
 
+Issues and PRs welcomed ;)  
 欢迎提交功能需求（
 
 - [INI](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/ini.md)
