@@ -1,7 +1,7 @@
 # 红红语言文件 `.CSF` 支持库
 
 > 模块名：`csf`  
-> CSF 文件逻辑上看，就是个**连续存储**的字典。
+> CSF 类可直接从包中取用。除 JSON 外，其余的格式转换 API 仍需显式导入。
 
 提供 CSF 文件的读取、存储，以及与 JSON XML YAML 的相互转换。  
 转换出来的 JSON 和 XML 遵循 [ShimakazeProject](https://github.com/ShimakazeProject) 编写的语义规范。  

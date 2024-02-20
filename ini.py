@@ -17,7 +17,7 @@ from io import TextIOWrapper
 from os.path import join, split
 from typing import Callable, Iterable, MutableMapping
 
-__all__ = ['INIClass', 'INISection', 'scanIncludes']
+__all__ = ['INIClass', 'INISection', 'scanINITree']
 
 
 class INISection(MutableMapping):
@@ -273,9 +273,9 @@ class INIClass(Iterable):
                     f'INI tree incorrect - {e.strerror}: {e.filename}')
 
 
-def scanIncludes(root) -> list:
+def scanINITree(root) -> list:
     """
-    Preorder collecting the sub ini tree.
+    To fetch all available INIs in the `[#include]`, for `INIClass` reading.
 
     Hint:
         - We assume the inis are all based on the directory of root.
@@ -288,6 +288,7 @@ def scanIncludes(root) -> list:
     Returns:
         A list of inis, with the beginning ini placed in [0].
     """
+    # In fact, this is just pre-order traversal of the sub ini tree.
     doc = INIClass()
     ret, stack = [], [root]
     rootdir = split(root)[0]
