@@ -1,20 +1,20 @@
 # Ares INI
 
 > 模块名：`ini`
+> 此模块全部 API 均可直接从包中取用。
 
-模块本身不作为工具对外提供，但仍向包提供了**基于 Ares 的无注释** INI 实现。  
-~~也算是 PyMapRA2 的遗产。可惜旧文档已经找不到了，我也懒得重新写一份。~~
+~~算是 PyMapRA2 的遗产。可惜旧文档已经找不到了，我也懒得重新写一份。~~
 
 ```python
 >>> import pyalert2yr.ini as ini
 >>> ini.__all__
-['INIClass', 'INISection', 'scanIncludes']
+['INIClass', 'INISection', 'scanINITree']
 >>>
 ```
 
 ## 查找子 ini 树
 ```python
-def scanIncludes(ini_root_path) -> list:
+def scanINITree(ini_root_path) -> list:
     """搜索 [#includes] 子 INI，并【尽可能】按游戏读取的顺序排列。"""
 ```
 

@@ -2,6 +2,16 @@
 # @File   : __init__.py
 # @Time   : 2023/11/14 17:40:39
 # @Author : Chloride
+"""
+Since `.map` files are basically INIs, it sounds great to manage them with Git.
+
+However, a map would consists with thousands of lines, even
+compressed map packs within unreadable texts, meaningless to diff.
+
+So with this module, you could split a map into lower scale INIs and
+package binaries, which is Git friendly.
+"""
+# It's fine to just decode and encode map packs, but I am lazy to continue.
 
 from os.path import exists, join
 from struct import pack, unpack
@@ -39,7 +49,7 @@ def _ex_binaries(map_: INIClass, section, target_fn):
 def splitMap(self: INIClass, out_dir: str):
     """To split map files to smaller files (git friendly).
 
-    e.g. `exportMapElems(yr_a07, 'D:/yra07')` =>
+    e.g. `splitMap(yr_a07, 'D:/yra07')` =>
     - `D:/yra07/(...).ini`
     - `D:/yra07/*.mappkg`
     - `D:/yra07/partial.ini`
@@ -112,7 +122,7 @@ def joinMap(src_dir, out_name):
 
     PS: src_dir shouldn't end with `\\` or `/`!
 
-    e.g. `compilePartialMap('D:/yra07', 'antrc')` => `D:/yra07/antrc.map`
+    e.g. `joinMap('D:/yra07', 'antrc')` => `D:/yra07/antrc.map`
     """
     if not exists(src_dir):
         return
