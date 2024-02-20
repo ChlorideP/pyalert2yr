@@ -47,8 +47,8 @@ class CsfDocument(MutableMapping):
     def __getitem__(self, label: str) -> CsfVal | List[CsfVal]:
         """多值标签返回整个列表；
         单值标签只返回第一个（相当于帮你省去 [0] 下标访问）"""
-    def __setitem__(self, label: str, val: CsfVal | List[CsfVal]):
-        """传入列表：直接覆盖。传入单个 CsfVal：覆盖 [0] 号位。
+    def __setitem__(self, label: str, val: CsfVal | List[CsfVal] | str):
+        """传入列表：直接覆盖。传入单个 CsfVal：覆盖 [0] 号位。传入字符串：构建 CsfVal 并赋值。
         注意：游戏只会读第一个值。红警风暴语言编辑器也只能读出两个值。"""
     def __delitem__(self, label: str):
     def __iter__(self):

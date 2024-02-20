@@ -129,7 +129,11 @@ class CsfDocument(MutableMapping):
         return (self.__data[lbl] if len(self.__data[lbl]) > 1
                 else self.__data[lbl][0])
 
-    def __setitem__(self, lbl: str, val: Union[CsfVal, List[CsfVal]]):
+    def __setitem__(self,
+                    lbl: str,
+                    val: Union[CsfVal, List[CsfVal], str]):
+        if isinstance(val, str):
+            val = {'value': val, 'extra': None}
         # for multiple value, game would only use the first one.
         try:
             self.__data[lbl][0] = CsfVal(val)
