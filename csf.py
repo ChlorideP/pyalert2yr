@@ -282,7 +282,7 @@ def csfToJSONV2(self: CsfDocument, jsonfilepath, encoding='utf-8', indent=2):
             ret = val.copy()
             if '\n' in ret['value']:
                 ret['value'] = ret['value'].split('\n')
-            if not ret['extra']:
+            if 'extra' in ret and not ret['extra']:
                 del ret['extra']
         return ret
 
@@ -333,7 +333,7 @@ def csfToXMLV1(self: CsfDocument, xmlfilepath, indent='\t'):
     """Convert to Shimakaze Csf-XML V1 Document.
     Only `utf-8` supported."""
     def parseCsfVal(elem_node: et.Element, v: CsfVal):
-        if v['extra']:  # not None, not empty
+        if v.get('extra'):  # not None, not empty
             elem_node.attrib['extra'] = v['extra']
         elem_node.text = v['value']
 
