@@ -16,7 +16,7 @@ package binaries, which is Git friendly.
 from os.path import exists, join
 from struct import pack, unpack
 
-from ..ini import INIClass
+from .formats.ini import INIClass
 
 
 def _ex_regs(map_: INIClass, registry, target: INIClass):
@@ -62,38 +62,24 @@ def splitMap(self: INIClass, out_dir: str):
     t.clear()
 
     _ex_regs(self, 'TaskForces', t)
-    with open(join(out_dir, 'taskforces.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
-    t.clear()
-
     _ex_regs(self, 'ScriptTypes', t)
-    with open(join(out_dir, 'scripttypes.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
-    t.clear()
-
     _ex_regs(self, 'TeamTypes', t)
-    with open(join(out_dir, 'teamtypes.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
-    t.clear()
-
     _ex_entries(self, t, 'AITriggerTypes', 'AITriggerTypesEnable')
     with open(join(out_dir, 'AI_local.ini'), 'w', encoding='utf-8') as fp:
         t.writeStream(fp)
     t.clear()
 
     _ex_entries(self, t,
-                'VariableNames', 'Triggers', 'Events', 'Actions')
+                'VariableNames', 'Triggers', 'Events', 'Actions', 'Tags')
     with open(join(out_dir, 'logics.ini'), 'w', encoding='utf-8') as fp:
         t.writeStream(fp)
     t.clear()
 
-    _ex_entries(self, t, 'Infantry', 'Units', 'Aircraft', 'Structures')
-    with open(join(out_dir, 'technos.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
-    t.clear()
-
-    _ex_entries(self, t, 'Smudge', 'Terrain',)
-    with open(join(out_dir, 'natures.ini'), 'w', encoding='utf-8') as fp:
+    _ex_entries(self, t,
+                'Infantry', 'Units', 'Aircraft', 'Structures',
+                'Smudge', 'Terrain',
+                'CellTags', 'Waypoints')
+    with open(join(out_dir, 'objects.ini'), 'w', encoding='utf-8') as fp:
         t.writeStream(fp)
     t.clear()
 
@@ -131,13 +117,9 @@ def joinMap(src_dir, out_name):
     out = INIClass()
     out.read(join(src_dir, "partial.ini"),
              join(src_dir, 'houses.ini'),
-             join(src_dir, 'taskforces.ini'),
-             join(src_dir, 'scripttypes.ini'),
-             join(src_dir, 'teamtypes.ini'),
              join(src_dir, 'AI_local.ini'),
              join(src_dir, 'logics.ini'),
-             join(src_dir, 'technos.ini'),
-             join(src_dir, 'natures.ini'),
+             join(src_dir, 'objects.ini'),
              encoding='utf-8')
     _im_binaries(out, join(src_dir, 'iso.mappkg'), 'IsoMapPack5')
     _im_binaries(out, join(src_dir, 'ovl.mappkg'), 'OverlayPack')

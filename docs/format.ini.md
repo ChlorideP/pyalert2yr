@@ -1,12 +1,12 @@
 # Ares INI
 
-> 模块名：`ini`  
-> 此模块全部 API 均可直接从包中取用。
+> 模块名：`formats.ini`  
+> 此模块全部 API 均可直接从`pyalert2yr`包中取用。
 
 ~~算是 PyMapRA2 的遗产。可惜旧文档已经找不到了，我也懒得重新写一份。~~
 
 ```python
->>> import pyalert2yr.ini as ini
+>>> import pyalert2yr.formats.ini as ini
 >>> ini.__all__
 ['INIClass', 'INISection', 'scanINITree']
 >>>

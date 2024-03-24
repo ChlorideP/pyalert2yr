@@ -50,6 +50,6 @@ You may get English help by `help()` function.
 Issues and PRs welcomed ;)  
 欢迎提交功能需求（
 
-- [INI](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/ini.md)
-- [CSF](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/csf.md)
-- [Split/Join MAP for git management - 用于 Git 的地图拆分与组合](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/export.md)
+- [formats.ini](docs/format.ini.md)
+- [formats.csf](docs/format.csf.md)
+- [Split/Join MAP for git management - 用于 Git 的地图拆分与组合](docs/map_split.md)

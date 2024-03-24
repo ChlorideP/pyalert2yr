@@ -1,7 +1,7 @@
 # 红红语言文件 `.CSF` 支持库
 
-> 模块名：`csf`  
-> CSF 类可直接从包中取用。除 JSON 外，其余的格式转换 API 仍需显式导入。
+> 模块名：`formats.csf`  
+> CSF 类可直接从`pyalert2yr`包中取用。除 JSON 外，其余的格式转换 API 仍需显式导入。
 
 提供 CSF 文件的读取、存储，以及与 JSON XML YAML 的相互转换。  
 转换出来的 JSON 和 XML 遵循 [ShimakazeProject](https://github.com/ShimakazeProject) 编写的语义规范。  
@@ -10,13 +10,12 @@ YAML 则简化处理，尽管也遵循上述规范，但只接受纯文本键值
 > 有条件的可以考虑 [Shimakaze.Sdk](#bibliography雾)。~~别的不说，至少他的 CSF 工具可以完美兼容我导出的 YAML 文档，反之就不一定了。~~  
 
 ```python
->>> import pyalert2yr.csf as csf
+>>> import pyalert2yr.formats.csf as csf
 >>> csf.__all__
-['CSF_TAG', 'LBL_TAG', 'VAL_TAG', 'EVAL_TAG',
- 'CsfHead', 'CsfLang', 'CsfVal', 'CsfDocument',
- 'InvalidCsfException', 'EditorIncompatibleWarning',
- 'csfToJSONV2', 'csfToXMLV1', 'importJSONV2', 'importXMLV1',
- 'csfToSimpleYAML', 'importSimpleYAML']
+['CsfHead', 'CsfLang', 'CsfVal', 'CsfDoc',
+ 'InvalidCsfException',
+ 'CsfFileParser', 'CsfJsonV2Parser',
+ 'CsfXmlParser', 'CsfYamlSimpleParser']
 ```
 
 ## 可食用 API
@@ -37,9 +36,10 @@ class CsfVal(TypedDict):
 > 声明中带上`List[str]`是为了 JSON 转换用，  
 > Shimakaze's schema 要求多行字符串须按`\n`分割成字符串数组。
 
-### CSF 文档类：`CsfDocument`
+### CSF 文档类：`CsfDoc`
+读写 CSF 键值时注意：**CSF 键`label`是不区分大小写的**，`TXT_NONE`和`txt_none`应视为同一键名。
 ```python
-class CsfDocument(MutableMapping):
+class CsfDoc(MutableMapping):
     version = 3  # CSF 版本（RA2 YR 均为 3）
     language = 0  # 语言 ID，即 LANG_LIST 对应元素的下标。
 
@@ -68,55 +68,30 @@ class CsfDocument(MutableMapping):
         """输出 CSF 文件（无需手动 open() 开辟缓冲区）"""
 ```
 
-### 格式转换：`csfToX` `importX`
+### 格式转换：`CsfXXParser`
+均继承自抽象类`CsfSerializer`。只不过 Serializer 这个单词终归太长了。
 
-下列函数无需再配合`open()`开辟的缓冲区食用了。
+食用方法：
+```python
+doc = CsfFileParser('./stringtable99.csf').read()
+doc = CsfJsonV2Parser('E:/ra2md.json', 'utf-8').read()
+...
 
-- `csfToJSONV2(csf_doc, jsonpath, encoding='utf-8', indent=2)`：
-将 CSF 另存为 Shimakaze JSON V2 格式。
-> `csf_doc`: `CsfDocument` 实例  
-> `jsonpath`: JSON 文件路径  
-> `encoding`: 编码  
-> `indent`: 每个块缩进多少空格  
+CsfFileParser('E:/ssks.csf').write()
+CsfJsonV2Parser('./lang.json', 'gb18030').write(doc, indent=4)
+CsfXmlParser('./lang.xml').write(doc, indent='  ')
+CsfYamlSimpleParser('./lang.yaml', 'utf-8').write(doc, indent=4)
+```
 
-- `importJSONV2(jsonpath, encoding='utf-8')`：
-初始化 CSF，并导入指定 JSON 文件。
-> `jsonpath`: JSON 文件路径  
-> `encoding`: 编码
+> 注：由于 XML 的编码定义不多，为避免意外，XML 统一采用`utf-8`编码。
 
-* `csfToXMLV1(csf_doc, xmlpath, indent='\t')`：
-将 CSF 另存为 Shimakaze XML V1 文档。  
-> `csf_doc`: `CsfDocument` 实例  
-> `xmlpath`: XML 文档路径  
-> `indent`: 如何缩进（默认一个 Tab 键）
-
-> 由于 XML 的编码定义不多，为避免意外，统一采用`utf-8`编码。
-
-* `importXMLV1(xmlpath)`：
-初始化 CSF，并导入指定 XML 文档。
-> `xmlpath`: XML 文档路径
-
-- `csfToSimpleYAML(csf_doc, yamlpath, encoding='utf-8', indent=2)`：
-将 CSF 另存为简化 YAML 文档。
-> `csf_doc`: `CsfDocument` 实例  
-> `yamlpath`: YAML 文件路径  
-> `encoding`: 编码  
-> `indent`: 每个块缩进多少空格
-
-> 注意：只会保存游戏实际显示的值字符串，
+> 注：简化 YAML 只会保存游戏实际显示的值字符串，
 > - 若标签对应多个值，只取第一个；
 > - 若第一个值存在额外记录`extra`，忽略该记录。
 
-- `importSimpleYAML(yamlpath, encoding='utf-8')`：
-初始化 CSF，并导入简化 YAML 文档。
-> `yamlpath`: YAML 文件路径  
-> `encoding`: 编码
-
-> 注意：尽可能只传入本模块导出的简化 YAML，`Shimakaze.Sdk.Csf.Converter`导出的 YAML 有可能报错！
-
 ## 寄术细节
 
-关于`.csf`文件详细的读写脉络可以参看源代码和 ModEnc，恕不赘述。
+关于`.csf`文件详细的读写脉络可以参看`CsfFileParser`的源代码和 ModEnc，恕不赘述。
 
 ### 标识符 
 共四个：`CSF_TAG` `LBL_TAG` `VAL_TAG` `EVAL_TAG`  
@@ -128,7 +103,7 @@ class CsfDocument(MutableMapping):
 > - 若值首部检验失败，不是`VAL_TAG = " RTS"`，也不是`EVAL_TAG = "WRTS"`，则记录非法，我选择抛异常。
 
 ### 可选语言
-实际上 CSF 是支持多语言的。`CsfDocument`中的语言 ID 对应下列语言的序号。  
+实际上 CSF 是支持多语言的。`CsfDoc`中的语言 ID 对应下列语言的序号。  
 部分我知道的语言给出了中文对照。红红官方发行的语言用**粗体**表示。
 
 0. **en_US  英语-美国**
