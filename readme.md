@@ -33,14 +33,7 @@ Basically, here are some tips when deciding Ur package name:
 - It's case sensitive  
   包名**区分大小写**。
 
-```python
-from pyalert2yr.csf import importJSONV2
-
-if __name__ == '__main__':
-    ccwc = importJSONV2('~/ES/stringtable114514.json')
-    ccwc['TXT_RELEASE_NOTE'] = 'Extreme Starry v0.6'
-    ccwc.writeCsf('~/ES/stringtable99.csf')
-```
+[More Usage - 更多用例](docs/samples.md)
 
 ## 可用功能一览 - APIs
 
@@ -50,6 +43,6 @@ You may get English help by `help()` function.
 Issues and PRs welcomed ;)  
 欢迎提交功能需求（
 
-- [INI](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/ini.md)
-- [CSF](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/csf.md)
-- [Split/Join MAP for git management - 用于 Git 的地图拆分与组合](https://github.com/ClLab-YR/pyalert2yr/blob/master/docs/export.md)
+- [formats.ini](docs/format.ini.md)
+- [formats.csf](docs/format.csf.md)
+- [Split/Join MAP for git management - 用于 Git 的地图拆分与组合](docs/map_split.md)
