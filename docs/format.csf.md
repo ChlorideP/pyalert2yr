@@ -62,22 +62,22 @@ class CsfDoc(MutableMapping):
         """返回游戏实际读取的键值。"""
     def setdefault(self, label, string, *, extra=None):
         """若文档中不存在指定标签，则追加指定键值"""
-    def readCsf(self, filepath):
-        """读入 CSF 文件（无需手动 open() 开辟缓冲区）"""
-    def writeCsf(self, filepath):
-        """输出 CSF 文件（无需手动 open() 开辟缓冲区）"""
 ```
 
 ### 格式转换：`CsfXXParser`
 均继承自抽象类`CsfSerializer`。只不过 Serializer 这个单词终归太长了。
 
-食用方法：
-```python
-doc = CsfFileParser('./stringtable99.csf').read()
-doc = CsfJsonV2Parser('E:/ra2md.json', 'utf-8').read()
-...
+食用方法：用待读写的文件及其编码（若有）**创建一个 Parser，并调用相应的读写方法**。  
+~~你也可以创建了那个 Parser 后一直用着，只是没有必要。~~
 
-CsfFileParser('E:/ssks.csf').write()
+```python
+doc = CsfFileParser('./stringtable99.CSF').read()
+doc = CsfJsonV2Parser('E:/ra2md.JSON', 'utf-8').read()
+doc = CsfXmlParser('E:/ra2md.test.XML').read()
+doc = CsfYamlSimpleParser('D:/lang.YAML', 'utf-8').read()
+```
+```python
+CsfFileParser('E:/ssks.csf').write(doc)
 CsfJsonV2Parser('./lang.json', 'gb18030').write(doc, indent=4)
 CsfXmlParser('./lang.xml').write(doc, indent='  ')
 CsfYamlSimpleParser('./lang.yaml', 'utf-8').write(doc, indent=4)
