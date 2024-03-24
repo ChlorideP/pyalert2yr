@@ -1,7 +1,11 @@
-# 用例
+# 用例 - Usage
+
+> I got lazy to translate them, so the explanation would be available ONLY in Simplified Chinese.  
+> Or, you may be able to **guess** what the codes below are doing, by each **title**.
+
 这里提供一些我觉得有点实用性，但是暂时做不到泛用性的脚本用例。
 
-## 猹询 CSF 缺失
+## 猹询 CSF 缺失 - Check out Missing CSF in Map
 猹询地图里引用的，CSF 里却没有的词条。  
 暂时只考虑单 CSF 和原版触发情形。
 ```python
