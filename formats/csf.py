@@ -473,10 +473,10 @@ class CsfYamlSimpleParser(CsfSerializer):
     def write(self, _csf: CsfDoc, indent=2):
         """Convert to SIMPLE yaml file."""
         # manual dump as the pyyaml output is too ugly
-        with open(self._codec, 'w', encoding=self._codec) as fp:
+        with open(self._fn, 'w', encoding=self._codec) as fp:
             fp.write(f'{self.YAML_SCHEMA_HEADER}\n'
-                     f'lang: {self.language}\n'
-                     f'version: {self.version}\n'
+                     f'lang: {_csf.language}\n'
+                     f'version: {_csf.version}\n'
                      '---\n'
                      f'{self.YAML_SCHEMA_BODY}\n')
             for k in _csf.keys():
