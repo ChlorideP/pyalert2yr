@@ -11,169 +11,144 @@ Since Ares implemented new features of ini structure,
 the standard lib `configparser` won't be suitable anymore.
 """
 
+from io import BufferedReader
 import warnings
-from chardet import detect
-from io import TextIOWrapper
 from os.path import join, split
-from typing import Callable, Iterable, MutableMapping
+from queue import Queue
+from threading import Thread
+from typing import AnyStr, Iterator, List
+from typing import MutableMapping, Optional, Sequence
+from uuid import uuid1 as guid
+
+from chardet import detect_all as guess_codec
 
 __all__ = ['INIClass', 'INISection', 'scanINITree']
 
 
-class INISection(MutableMapping):
-    @staticmethod
-    def __bool_conv(val: str):
-        return val[0].lower() in ('1', 'y', 't')
-
-    @staticmethod
-    def __list_conv(val: str):
-        return val.split(',')
-
-    __VAL_CONV = {
-        True: "yes",
-        False: "no",
-        None: ""
+class INISection(dict):
+    """In case, INISection is just a dict like:
+    ```python
+    {
+        key: value,
+        key2: [value, comment],
+        comment_guid: [None, line_comment]
     }
-    __CONVERTER = {
-        bool: __bool_conv,
-        list: __list_conv
+    ```
+    To get things easier, key-value access would ignore comments.
+
+    And be cautious, INISection wouldn't do any type validation
+    when operating key-values.
+    """
+    def __init__(self, /, *args, **kwargs):
+        """Init a dictionary of ini entries included by section."""
+        super().__init__(*args, **kwargs)
+        self.summary: Optional[AnyStr] = None
+
+    def __setitem__(self, k: str, v: str):
+        if k not in self:
+            super().__setitem__(k, [v])
+        else:
+            super().__getitem__(k)[0] = v
+
+    def __getitem__(self, key: str) -> str:
+        return super().__getitem__(key)[0]
+
+    def _append_line_comment(self, comment: str):
+        uidkey = ';{0}'.format(str(guid())[0:8])
+        super().__setitem__(uidkey, [None, comment])
+
+    def _add_inline_comment(self, key, comment):
+        raw_val_list: List[Optional[AnyStr]] = super().__getitem__(key)
+        if len(raw_val_list) > 1:
+            raw_val_list[1] = comment
+        else:
+            raw_val_list.append(comment)
+
+
+class INIClass(MutableMapping):
+    """A INIClass is simply a group of dict like:
+    ```python
+    header = {
+        ";a8a8a8a8": [None, "ddtms"],
+        "ExtConfig": ["~/Desktop/wland/config.yaml"]
     }
+    entries = {
+        "InfantryTypes": {  # INISection in fact.
+            '0': ['E1'],
+            '1': ['E2', 'CNM'],
+            ';c412bf52': [None, 'ssks']
+        },
+        "E2": {}
+    }
+    inheritance = {
+        "E2": "E1"  # keys of E1 would copy to E2 ingame.
+    }
+    ```
+    """
+    def __init__(self):
+        """Init an empty INI document."""
+        self.__readqueue = Queue()
+        self.__diff = 0
+        self.__raw: MutableMapping[str, INISection] = {}
+        self.inheritance = {}
+        self.header = INISection()
 
-    def __init__(self, section: str, _super=None, **kwargs):
-        self._name = section
-        self.parent = _super
-        self.__pairs = {}
-        if kwargs:
-            self.update(kwargs)
+    def __getitem__(self, key: str) -> INISection:
+        return self.__raw.__getitem__(key)
 
-    def __setitem__(self, k, v):
-        if isinstance(v, (list, tuple, set)):
-            v = ','.join(map(str, v))
-        self.__pairs[str(k)] = self.__VAL_CONV.get(v, str(v))
+    def __setitem__(self, key: str, value: INISection) -> None:
+        return self.__raw.__setitem__(key, value)
 
-    def __delitem__(self, k):
-        del self.__pairs[k]
+    def __delitem__(self, key: str) -> None:
+        if key in self.inheritance:
+            del self.inheritance[key]
+        return self.__raw.__delitem__(key)
 
-    def __getitem__(self, key):
-        return self.__pairs[key]
-
-    def __contains__(self, item):
-        return item in self.__pairs
+    def __iter__(self) -> Iterator:
+        return self.__raw.__iter__()
 
     def __len__(self) -> int:
-        return len(self.__pairs)
-
-    def __iter__(self):
-        return iter(self.__pairs)
-
-    def __repr__(self):
-        _info = "[%s]" % self._name
-        if self.parent:
-            _info += ":[%s]" % self.parent
-        return _info
-
-    def __str__(self):
-        return self._name
-
-    def find(self, key):
-        """
-        Try to search the section who contains key, recursively.
-
-        Returns:
-            `INISection` if found, otherwise `str` or `None`.
-        """
-        sect = self
-        while isinstance(sect, INISection):
-            if key in sect.__pairs:
-                break
-            sect = sect.parent
-        return sect
-
-    def get(self, key, converter: Callable[[str], object] = str, default=None):
-        """
-        Returns converted value if key is reachable (i.e.
-        could be found in current context), otherwise `default`.
-        """
-        target = self.find(key)
-        if isinstance(target, INISection):
-            value: str = target[key]
-            if not value:  # null value
-                return None
-            else:
-                return self.__CONVERTER.get(converter, converter)(value)
-        else:
-            return default
-
-    def sortPairs(self, key=None, *, reverse=False):
-        """
-        Sort the key-value pairs in ascending order, just like sorted().
-
-        Hint:
-            Each pair will be packed into a (key, value) tuple.
-            You may find it easy to use interger index.
-
-        Examples:
-            - by value length:
-                `self.sortPairs(key=lambda x: len(x[1]))`
-            - by keys (make sure they are comparable):
-                `self.sortPairs(key=lambda x: x[0])
-        """
-        keys = sorted(self.__pairs.items(), key=key, reverse=reverse)
-        pairs = {k: self.__pairs.get(k) for k in keys}
-        self.__pairs = pairs
-
-    def _update_myself(self, section):
-        if not isinstance(section, INISection):
-            raise TypeError(type(section))
-        self._name = section._name
-        self.parent = section.parent
-        self.__pairs = dict(section.items())
-
-
-class INIClass(Iterable):
-    __diff = 0  # for multiple inis processing
-
-    def __init__(self):
-        """Initialize an empty INI structure."""
-        self.__raw: dict[str, INISection] = {}
-
-    def __getitem__(self, key):
-        return self.__raw[key]
-
-    def __setitem__(self, key, value):
-        key = str(key)
-        if key not in self.__raw:
-            self.__raw[key] = INISection(key)
-
-        if isinstance(value, INISection):
-            self.__raw[key]._update_myself(value)
-        else:
-            self.__raw[key].update(value)
-
-    def __delitem__(self, key):
-        del self.__raw[key]
-
-    def __contains__(self, key):
-        return key in self.__raw
-
-    def __len__(self):
-        return len(self.__raw)
-
-    def __iter__(self):
-        return iter(self.__raw)
+        return self.__raw.__len__()
 
     def getTypeList(self, section):
+        '''Collects a ordered sequence of the "type" list section,
+        like `BuildingTypes`, with elements unique.
+        '''
         if section not in self.__raw:
             return tuple()
 
         ret = []
         for i in self.__raw[section].values():
-            if i not in ret and i != '':
+            i = i[0]  # since { key: [value | None, comment] }
+            if i is not None and i != '' and i not in ret:
                 ret.append(i)
         return ret
 
+    def recursiveFind(self, section, key) -> Sequence[Optional[str]]:
+        """Start searching from a specific section.
+
+        If key not found and inheritance detected, then go further,
+        until the condition broken.
+
+        Returns:
+            - the name of section, which contains the given key,
+              or `None` if tracking stopped.
+            - its value (like `self[section][key]`), or `None`.
+        """
+        value = None
+        while True:
+            if key in self[section]:
+                value = self[section][key]
+                break
+            section = self.inheritance.get(section)
+            if section is None:
+                break
+        return section, value
+
     def clear(self):
-        return self.__raw.clear()
+        self.inheritance.clear()
+        self.header.clear()
+        self.__raw.clear()
 
     def rename(self, old, new):
         """
@@ -189,88 +164,149 @@ class INIClass(Iterable):
         """
         if old not in self.__raw or new in self.__raw:
             return False
-        self[old]._name = new
 
-        # Everything may look automatic if I change it list[INISection].
-        # However I'm too lazy to do that.
-        sectNames = [i._name for i in self._sections]
-        sects = list(self._sections)
-        self.__raw = dict(zip(sectNames, sects))
-
+        sections, datas = list(self.keys()), list(self.values())
+        oldidx = sections.index(old)
+        sections[oldidx] = new
+        oldinherit = self.inheritance.get(old)
+        if oldinherit is not None:
+            del self.inheritance[old]
+            self.inheritance[new] = oldinherit
+        self.__raw = dict(zip(sections, datas))
         return True
 
-    @property
-    def _section_heads(self):
-        return self.__raw.keys()
-
-    @property
-    def _sections(self):
-        return self.__raw.values()
-
-    def writeStream(self, fp: TextIOWrapper, pairing='=', blankline=1):
+    def write(self, filename, encoding='utf-8',
+              *, pairing='=', commenting='; ', blankline=1):
         """
         Save as a C&C ini.
 
         Args:
             pairing: how to connect key with value?
+            commenting: how the individual comment lines start with?
+                (ps: the inline comments won't be affected)
             blankline: how many lines between sections?
         """
-        for i in self.__raw.values():
-            fp.write(f"{repr(i)}\n")
-            for key, value in i.items():
-                fp.write(f"{key}{pairing}{value}\n")
+
+        def writeEntries():
+            for k, v in entries.items():
+                if str.startswith(k, ';'):
+                    fp.write(f'{commenting}{v[1]}\n')
+                    continue
+                fp.write(f'{k}{pairing}')
+                if len(v) == 1:
+                    fp.write(f"{v[0]}\n")
+                else:
+                    fp.write(f"{v[0]}{v[1]}\n")
             fp.write("\n" * blankline)
 
-    def readStream(self, stream: TextIOWrapper):
+        def writeSection():
+            fp.write(f'[{section}]')
+            if inherit is not None:
+                fp.write(f':[{inherit}]')
+            if entries.summary:
+                fp.write(f';{entries.summary}')
+            fp.write('\n')
+
+        with open(filename, 'w', encoding=encoding) as fp:
+            entries = self.header
+            writeEntries()
+            for k, v in self.__raw.items():
+                section, entries = k, v
+                inherit = self.inheritance.get(k)
+                writeSection()
+                writeEntries()
+
+    def __read_file(self):
         """
-        Load a C&C ini.
+        Load C&C ini(s) into buffer.
         """
         while True:
-            i = stream.readline()
-            if len(i) == 0:
+            fp: BufferedReader = self.__readqueue.get()
+            section = self.header
+            while i := fp.read(1):
+                if i == b'[':
+                    section = self.__read_section(fp)
+                elif i == b';':
+                    section._append_line_comment(self.__decode_str(fp, b'\n'))
+                elif i == b'\n':
+                    continue
+                else:
+                    self.__read_entry(
+                        section, self.__decode_str(fp, b'\n', buffer_init=i))
+            fp.close()
+            self.__readqueue.task_done()
+
+    @staticmethod
+    def __decode_str(stream: BufferedReader,
+                     *ends: bytes,
+                     buffer_init=b'',
+                     start=None,
+                     trim=False) -> str:
+        while i := stream.read(1):
+            if start is not None and i == start:
+                continue
+            if i in ends:
                 break
+            buffer_init += i
 
-            if i[0] == '[':
-                curSect = [j.strip()[1:-1]
-                           for j in i.split(';')[0].split(':')]
-                this = self.__raw.get(curSect[0])
-                if this is None:
-                    base = (None if len(curSect) == 1
-                            else self.__raw.get(curSect[1], curSect[1]))
-                    this = INISection(curSect[0], base)
-                    self.__raw[curSect[0]] = this
-            elif '=' in i:
-                j = i.split('=', 1)
-                j[0] = j[0].strip()
+        # too complex to make each one have a try.
+        codec = guess_codec(buffer_init)[0]
+        try:
+            buffer_init = buffer_init.decode(
+                'utf-8' if codec is None or codec['confidence'] < 0.8
+                else codec['encoding'])
+        except UnicodeDecodeError:
+            buffer_init = buffer_init.decode('gbk')
 
-                if ';' not in j[0]:
-                    key = f'+{self.__diff}' if j[0] == '+' else j[0]
-                    self.__diff += 1
+        if trim:
+            buffer_init = buffer_init.strip()
+        return buffer_init
 
-                    this[key] = j[1].split(';')[0].strip()
+    def __read_section(self, stream: BufferedReader) -> INISection:
+        cur = self.__decode_str(stream, b']')
+        if cur not in self.__raw:
+            self.__raw[cur] = ret = INISection()
+        else:
+            ret = self.__raw[cur]
 
-    def read(self, *inis, encoding=None):
+        if (_next := stream.read(1)) == b':':
+            self.inheritance[cur] = self.__decode_str(stream, b']', start=b'[')
+        if _next != b'\n':
+            summary = self.__decode_str(stream, b'\n', start=b';', trim=True)
+            if summary != '':
+                ret.summary = summary
+        return ret
+
+    def __read_entry(self, section: INISection, entry: str):
+        if entry.strip().startswith(';'):  # some sort of ' \t\t\t; ssks'.
+            section._append_line_comment(entry)
+            return
+        key, raw_value = entry.split('=', 1)
+        key = key.strip()
+        if key[0] == '+':
+            key = f'+{self.__diff}'
+            self.__diff += 1
+        section[key] = raw_value.split(';', 1)[0].strip()
+        comment = raw_value.replace(section[key], '', 1)
+        if comment.strip() != '':
+            section._add_inline_comment(key, comment)
+
+    def read(self, *inis):
         """
-        Read C&C inis one by one.
+        Read (a group of) C&C ini(s).
 
         Args:
             *inis: inis included by `self`.
-            encoding: def to auto (None).
-
-        Hint:
-            - The auto encoding detect may not be effective.
-            It's recommended to just consider `gb18030` or `utf-8`.
         """
+        Thread(target=self.__read_file, daemon=True).start()
         for i in inis:
-            if encoding is None:
-                with open(i, 'rb') as fs:
-                    encoding = detect(fs.read())['encoding']
             try:
-                with open(i, 'r', encoding=encoding) as fs:
-                    self.readStream(fs)
+                fp = open(i, 'rb')
+                self.__readqueue.put(fp)
             except OSError as e:
-                warnings.warn(
-                    f'INI tree incorrect - {e.strerror}: {e.filename}')
+                warnings.warn(f"INI tree may load incorrectly: {i} - {e}")
+                fp.close()
+        self.__readqueue.join()
 
 
 def scanINITree(root) -> list:
@@ -295,18 +331,8 @@ def scanINITree(root) -> list:
 
     while len(stack) > 0:
         root = stack.pop()
-
-        try:
-            doc.read(root)
-        except OSError as e:
-            warnings.warn(f'{e.strerror}: {e.filename}')
-            continue
-        except UnicodeDecodeError as e:
-            warnings.warn(
-                f'Includes skipped: DecodeError({e.encoding}) - {root}')
-            ret.append(root)
-        else:
-            ret.append(root)
+        doc.read(root)
+        ret.append(root)
 
         if '#include' in doc:
             rootinc = [join(rootdir, i)

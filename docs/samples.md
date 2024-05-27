@@ -16,8 +16,7 @@ from pyalert2yr.formats import ini, csf
 text_trigger_actions = ['11', '103']
 
 mp = ini.INIClass()
-mp.read(input("MAP FILE PATH: "),
-        encoding='ansi')  # FA2 didn't support UTF-8
+mp.read(input("MAP FILE PATH: "))
 lang = csf.CsfFileParser(input("CSF FILE PATH: ")).read()
 
 for i, j in mp['Actions'].items():

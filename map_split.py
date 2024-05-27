@@ -57,38 +57,33 @@ def splitMap(self: INIClass, out_dir: str):
     t = INIClass()
     _ex_regs(self, 'Houses', t)
     _ex_regs(self, 'Countries', t)
-    with open(join(out_dir, 'houses.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
+    t.write(join(out_dir, 'houses.ini'), 'utf-8')
     t.clear()
 
     _ex_regs(self, 'TaskForces', t)
     _ex_regs(self, 'ScriptTypes', t)
     _ex_regs(self, 'TeamTypes', t)
     _ex_entries(self, t, 'AITriggerTypes', 'AITriggerTypesEnable')
-    with open(join(out_dir, 'AI_local.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
+    t.write(join(out_dir, 'AI_local.ini'), 'utf-8')
     t.clear()
 
     _ex_entries(self, t,
                 'VariableNames', 'Triggers', 'Events', 'Actions', 'Tags')
-    with open(join(out_dir, 'logics.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
+    t.write(join(out_dir, 'logics.ini'), 'utf-8')
     t.clear()
 
     _ex_entries(self, t,
                 'Infantry', 'Units', 'Aircraft', 'Structures',
                 'Smudge', 'Terrain',
                 'CellTags', 'Waypoints')
-    with open(join(out_dir, 'objects.ini'), 'w', encoding='utf-8') as fp:
-        t.writeStream(fp)
+    t.write(join(out_dir, 'objects.ini'), 'utf-8')
     t.clear()
 
     _ex_binaries(self, 'IsoMapPack5', join(out_dir, 'iso.mappkg'))
     _ex_binaries(self, 'OverlayPack', join(out_dir, 'ovl.mappkg'))
     _ex_binaries(self, 'OverlayDataPack', join(out_dir, 'ovldata.mappkg'))
 
-    with open(join(out_dir, 'partial.ini'), 'w', encoding='utf-8') as fp:
-        self.writeStream(fp)
+    self.write(join(out_dir, 'partial.ini'), 'utf-8')
 
 
 def _im_binaries(target_map: INIClass, package_fn, target_section):
@@ -119,11 +114,8 @@ def joinMap(src_dir, out_name):
              join(src_dir, 'houses.ini'),
              join(src_dir, 'AI_local.ini'),
              join(src_dir, 'logics.ini'),
-             join(src_dir, 'objects.ini'),
-             encoding='utf-8')
+             join(src_dir, 'objects.ini'))
     _im_binaries(out, join(src_dir, 'iso.mappkg'), 'IsoMapPack5')
     _im_binaries(out, join(src_dir, 'ovl.mappkg'), 'OverlayPack')
     _im_binaries(out, join(src_dir, 'ovldata.mappkg'), 'OverlayDataPack')
-    with open(join(src_dir, f"{out_name}.map"), 'w',
-              encoding='utf-8') as fp:
-        out.writeStream(fp)
+    out.write(join(src_dir, f"{out_name}.map"))
