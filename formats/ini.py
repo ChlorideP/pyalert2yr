@@ -16,16 +16,16 @@ import warnings
 from os.path import join, split
 from queue import Queue
 from threading import Thread
-from typing import AnyStr, Iterator, List
+from typing import AnyStr, ItemsView, Iterator, KeysView, List, ValuesView
 from typing import MutableMapping, Optional, Sequence
 from uuid import uuid1 as guid
 
 from chardet import detect_all as guess_codec
 
-__all__ = ['INIClass', 'INISection', 'scanINITree']
+__all__ = ['INIClass', 'INISection', 'iniTreeDFSWalk']
 
 
-class INISection(dict):
+class INISection(MutableMapping):
     """In case, INISection is just a dict like:
     ```python
     {
@@ -39,26 +39,46 @@ class INISection(dict):
     And be cautious, INISection wouldn't do any type validation
     when operating key-values.
     """
-    def __init__(self, /, *args, **kwargs):
+    def __init__(self, **pairs_to_import):
         """Init a dictionary of ini entries included by section."""
-        super().__init__(*args, **kwargs)
+        self.__raw: MutableMapping[str, List[Optional[AnyStr]]] = {}
         self.summary: Optional[AnyStr] = None
+        if pairs_to_import:
+            self.update(pairs_to_import)
 
     def __setitem__(self, k: str, v: str):
         if k not in self:
-            super().__setitem__(k, [v])
+            self.__raw[k] = [v]
         else:
-            super().__getitem__(k)[0] = v
+            self.__raw[k][0] = v
 
     def __getitem__(self, key: str) -> str:
-        return super().__getitem__(key)[0]
+        return self.__raw[key][0]
+
+    def __delitem__(self, key: str) -> None:
+        del self.__raw[key]
+
+    def __len__(self) -> int:
+        return len(self.__raw)
+
+    def __iter__(self) -> Iterator:
+        return iter(self.keys())  # shouldn't include comments' UUID.
+
+    def keys(self) -> KeysView:
+        return (i for i in self.__raw.keys() if not i.startswith(';'))
+
+    def values(self) -> ValuesView:
+        return (i[0] for i in self.__raw.values() if i is not None)
+
+    def items(self) -> ItemsView:
+        return ((k, v[0]) for k, v in self.__raw.items()
+                if not k.startswith(';'))
 
     def _append_line_comment(self, comment: str):
-        uidkey = ';{0}'.format(str(guid())[0:8])
-        super().__setitem__(uidkey, [None, comment])
+        self.__raw[f'{str(guid())}'] = [None, comment]
 
     def _add_inline_comment(self, key, comment):
-        raw_val_list: List[Optional[AnyStr]] = super().__getitem__(key)
+        raw_val_list = self.__raw[key]
         if len(raw_val_list) > 1:
             raw_val_list[1] = comment
         else:
@@ -119,9 +139,11 @@ class INIClass(MutableMapping):
 
         ret = []
         for i in self.__raw[section].values():
-            i = i[0]  # since { key: [value | None, comment] }
-            if i is not None and i != '' and i not in ret:
-                ret.append(i)
+            if i is None or i == '':
+                continue
+            if i in ret:
+                continue
+            ret.append(i)
         return ret
 
     def recursiveFind(self, section, key) -> Sequence[Optional[str]]:
@@ -204,7 +226,7 @@ class INIClass(MutableMapping):
             if inherit is not None:
                 fp.write(f':[{inherit}]')
             if entries.summary:
-                fp.write(f';{entries.summary}')
+                fp.write(f'{entries.summary}')
             fp.write('\n')
 
         with open(filename, 'w', encoding=encoding) as fp:
@@ -269,21 +291,26 @@ class INIClass(MutableMapping):
         else:
             ret = self.__raw[cur]
 
-        if (_next := stream.read(1)) == b':':
+        _next = stream.read(1)
+        if _next == b':':
             self.inheritance[cur] = self.__decode_str(stream, b']', start=b'[')
         if _next != b'\n':
-            summary = self.__decode_str(stream, b'\n', start=b';', trim=True)
+            summary = self.__decode_str(
+                stream, b'\n', buffer_init=_next, trim=True)
             if summary != '':
                 ret.summary = summary
         return ret
 
     def __read_entry(self, section: INISection, entry: str):
-        if entry.strip().startswith(';'):  # some sort of ' \t\t\t; ssks'.
+        try:
+            key, raw_value = entry.split('=', 1)
+        except ValueError:
             section._append_line_comment(entry)
             return
-        key, raw_value = entry.split('=', 1)
         key = key.strip()
-        if key[0] == '+':
+        if key == '':
+            return
+        if key == '+':
             key = f'+{self.__diff}'
             self.__diff += 1
         section[key] = raw_value.split(';', 1)[0].strip()
@@ -291,32 +318,35 @@ class INIClass(MutableMapping):
         if comment.strip() != '':
             section._add_inline_comment(key, comment)
 
-    def read(self, *inis):
+    def read(self, *filepaths):
         """
         Read (a group of) C&C ini(s).
 
         Args:
-            *inis: inis included by `self`.
+            *inis: inis to be loaded.
         """
         Thread(target=self.__read_file, daemon=True).start()
-        for i in inis:
+        for i in filepaths:
             try:
                 fp = open(i, 'rb')
                 self.__readqueue.put(fp)
             except OSError as e:
-                warnings.warn(f"INI tree may load incorrectly: {i} - {e}")
-                fp.close()
+                warnings.warn(f"INI tree may load incorrectly: {e}")
+                continue
         self.__readqueue.join()
 
 
-def scanINITree(root) -> list:
+def iniTreeDFSWalk(root) -> list:
     """
     To fetch all available INIs in the `[#include]`, for `INIClass` reading.
 
     Hint:
         - We assume the inis are all based on the directory of root.
-        - Files that get `UserWarning` will be skipped,
-        which means the result may not be always correct.
+        - The sequence returned may NOT CORRECT,
+        but surely be FULL (nobody skipped).
+        - The reading process is STILL SLOW when reading A SINGLE INI FILE,
+        which is unfortunately how this function does (one by one),
+        since the `[#include]` may be partial unless a whole file parsed.
 
     Args:
         root: the beginning ini file path of traversal. i.e. './rulesmd.ini'.
@@ -333,7 +363,6 @@ def scanINITree(root) -> list:
         root = stack.pop()
         doc.read(root)
         ret.append(root)
-
         if '#include' in doc:
             rootinc = [join(rootdir, i)
                        for i in doc['#include'].values()]
