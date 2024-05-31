@@ -80,12 +80,15 @@ class INISection(MutableMapping[str, Optional[str]]):
         return (i for i in self.__raw.keys() if not i.startswith(';'))
 
     def values(self) -> ValuesView[Optional[str]]:
-        return (self.__raw[k] for k in self.__raw.keys()
+        return (self.__raw[k][0] for k in self.__raw.keys()
                 if not k.startswith(';'))
 
     def items(self) -> ItemsView[str, Optional[str]]:
         return ((k, v[0]) for k, v in self.__raw.items()
                 if not k.startswith(';'))
+
+    def _update_raw(self, external: 'INISection'):
+        return self.__raw.update(external.__raw)
 
     def _items_raw(self):
         return self.__raw.items()
@@ -209,28 +212,46 @@ class INIClass(MutableMapping[str, INISection]):
 
 class INIParser:
     """To read from a specific INI tree, or write to a single INI file."""
-    @staticmethod
-    def __merge(target: INIClass, source: INIClass):
-        target.header.update(source.header)
+    def __sync_header(self, target: INIClass, header: INISection):
+        if not target.header:
+            target.header._update_raw(header)
+            return
+        _header = target.header
+        if len(target.keys()) > 0:
+            last = list(target.keys())[-1]
+            _header = target[last]
+        for k, v in header._items_raw():
+            if not k.startswith(';'):
+                target.header.update(k=v)
+                continue
+            _header._append_line_comment(v)
+
+    def __set_header(self, doc: INIClass, stream: BytesIO):
+        return self.__sync_header(doc, self.__read_entries(stream))
+
+    def __merge(self, target: INIClass, source: INIClass):
+        self.__sync_header(target, source.header)
         for section in source:
             target.update(section, source[section],
                           source.inheritance.get(section))
 
-    def __set_header(self, doc: INIClass, stream: BytesIO):
-        header = self.__read_entries(stream)
-        if not doc.header:
-            doc.header = header
-            return
-        last = list(doc.keys())[-1]
-        for k, v in header._items_raw():
-            if not k.startswith(';'):
-                doc.header.update(k=v)
-                continue
-            doc[last]._append_line_comment(v)
+    def read(self, inipath, errmsg="INI tree may not correct: "):
+        """Read from a single C&C ini.
 
-    # at least "stack" works well.
-    # queue with producer-consumer model may brings little (or even no)
-    # performance improvement.
+        Hint:
+            If an ini file is NOT FOUND, or NOT READABLE, then
+            a `UserWarning` will be shown and `None` will be returned.
+
+            You may have to instead call `_read`
+            if you'd like to manually handle the `OSError`.
+        """
+        inidict = None
+        try:
+            inidict = self._read(inipath)
+        except OSError as e:
+            warn(f"{errmsg}\n  {e}")
+        return inidict
+
     def readTree(self, rootpath, *subpaths, sequential=False) -> INIClass:
         """Try to read a sequence of inis, or DFS walk an INI include tree.
 
@@ -245,38 +266,36 @@ class INIParser:
                     - sub `D:/yr_Ares/rules_hotfix.ini`,
                     - sub `D:/yr_Ares/Includes/rules_GDI.ini`.
                 - INIs should ALL be readable, without encrypted or mix packed.
-
-            If an ini file is NOT FOUND, or NOT READABLE, then
-            a `UserWarning` will be given and the file will be skipped.
         """
-        rootdir, stack = split(rootpath)[0], [rootpath]
         ret = INIClass()
+        rootdir, stack = split(rootpath)[0], [self.read(rootpath)]
         while len(stack) > 0:
-            try:
-                root = self.read(stack.pop())
-            except OSError as e:
-                warn(f"INI tree may not correct: \n  {e}")
+            if (root := stack.pop()) is None:
                 continue
-            merger = Thread(target=self.__merge, args=(ret, root),
-                            daemon=True)
+            merger = Thread(target=self.__merge, args=(ret, root), daemon=True)
             merger.start()
             if sequential:
-                stack.extend(reversed(subpaths))
+                subpaths = dict(zip(range(len(subpaths)), subpaths))
             elif '#include' in root:
-                _ = ThreadPool(len(root['#include']))
-                includes = _.map(lambda x: join(rootdir, x),
-                                 root['#include'].values())
-                _.close()
-                _.join()
-                includes.reverse()
-                stack.extend(includes)
+                subpaths = root['#include']
+            else:
+                continue
+            _ = ThreadPool(len(subpaths))
+            rootincs = _.map(lambda x: self.read(join(rootdir, x)),
+                             subpaths.values())
+            _.close()
+            _.join()
+            rootincs.reverse()
+            stack.extend(rootincs)
             merger.join()
         return ret
 
-    # in case we get bytes from file buffer ORDERLY,
-    # implementing coroutines may not be very effective.
-    def read(self, inipath) -> INIClass:
-        """Read from a single C&C ini."""
+    def _read(self, inipath) -> INIClass:
+        """Read from a single C&C ini.
+
+        CAUTION:
+            May raise `OSError`.
+        """
         ret, parser = INIClass(), None
         with open(inipath, 'rb') as fp:
             buffer = b''
@@ -365,7 +384,10 @@ class INIParser:
                         blankline: int):
         for k, v in entries._items_raw():
             if str.startswith(k, ';'):
-                fp.write(f'{str.replace(v[1], '=', pairing)}\n')
+                try:
+                    fp.write(f'{str.replace(v[1], '=', pairing)}\n')
+                except TypeError:
+                    pass
                 continue
             fp.write(f'{k}{pairing}')
             if len(v) == 1:
