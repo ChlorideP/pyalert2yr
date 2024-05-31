@@ -11,21 +11,21 @@ Since Ares implemented new features of ini structure,
 the standard lib `configparser` won't be suitable anymore.
 """
 
-import warnings
 from io import BytesIO, TextIOWrapper
 from multiprocessing.pool import ThreadPool
 from os.path import join, split
 from threading import Thread
-from typing import (AnyStr, ItemsView, Iterator, KeysView, List,
-                    MutableMapping, Optional, Sequence, ValuesView)
+from typing import (ItemsView, Iterator, KeysView, List, MutableMapping,
+                    Optional, Sequence, ValuesView)
 from uuid import uuid1 as guid
+from warnings import warn
 
 from chardet import detect_all as guess_codec
 
 __all__ = ['INIClass', 'INISection', 'INIParser']
 
 
-class INISection(MutableMapping):
+class INISection(MutableMapping[str, Optional[str]]):
     """... is a dict, maintaining pairs and comments.
 
     In principle, `INISection` stores data by the following terms:
@@ -40,22 +40,28 @@ class INISection(MutableMapping):
     """
     def __init__(self, **pairs_to_import):
         """Init a dictionary of ini entries included by section."""
-        self.__raw: MutableMapping[str, List[Optional[AnyStr]]] = {}
-        self._keydiff = 0
-        self.summary: Optional[AnyStr] = None
+        self.__raw: MutableMapping[str, List[Optional[str]]] = {}
+        self.__diff = 0
+        self.summary: Optional[str] = None
         if pairs_to_import:
             self.update(pairs_to_import)
 
-    def __setitem__(self, k: str, v: str):
+    @property
+    def keyDiff(self):
+        """To get know how many `+=` in the section.
+        At least you won't have to guess key: `+?`"""
+        return self.__diff
+
+    def __setitem__(self, k: str, v: Optional[str]):
         if k == '+':
-            k = '+%d' % self._keydiff
-            self._keydiff += 1
+            k = '+%d' % self.__diff
+            self.__diff += 1
         if k not in self:
             self.__raw[k] = [v]
         else:
             self.__raw[k][0] = v
 
-    def __getitem__(self, key: str) -> str:
+    def __getitem__(self, key: str) -> Optional[str]:
         return self.__raw[key][0]
 
     def __delitem__(self, key: str) -> None:
@@ -70,13 +76,14 @@ class INISection(MutableMapping):
     def __repr__(self) -> str:
         return self.__raw.__repr__()
 
-    def keys(self) -> KeysView:
+    def keys(self) -> KeysView[str]:
         return (i for i in self.__raw.keys() if not i.startswith(';'))
 
-    def values(self) -> ValuesView:
-        return (i[0] for i in self.__raw.values() if i[0] is not None)
+    def values(self) -> ValuesView[Optional[str]]:
+        return (self.__raw[k] for k in self.__raw.keys()
+                if not k.startswith(';'))
 
-    def items(self) -> ItemsView:
+    def items(self) -> ItemsView[str, Optional[str]]:
         return ((k, v[0]) for k, v in self.__raw.items()
                 if not k.startswith(';'))
 
@@ -108,7 +115,7 @@ class INIClass(MutableMapping[str, INISection]):
         return self.__raw.__getitem__(key)
 
     def __setitem__(self, key: str, value: INISection) -> None:
-        return self.__raw.__setitem__(key, value)
+        return self.__raw.__setitem__(key, INISection(value))
 
     def __delitem__(self, key: str) -> None:
         if key in self.inheritance:
@@ -224,33 +231,38 @@ class INIParser:
     # at least "stack" works well.
     # queue with producer-consumer model may brings little (or even no)
     # performance improvement.
-    def dfsWalk(self, rootini_path) -> INIClass:
-        """Try to traversal and read an INI [#include] tree.
+    def readTree(self, rootpath, *subpaths, sequential=False) -> INIClass:
+        """Try to read a sequence of inis, or DFS walk an INI include tree.
 
-        Hint:
-            This method works with two assumption below ensured:
-            - ALL ini paths are based on a common parent directory,
-              like `D:/yr_Ares/` in the following paths:
-                - `D:/yr_Ares/rulesmd.ini`,
-                - `D:/yr_Ares/rules_hotfix.ini`,
-                - `D:/yr_Ares/Includes/rules_GDI.ini`.
-            - INIs should ALL be readable, without encrypted, or mix packed.
+        CAUTIONS:
+            - When `sequential` is `True`, the method would only read
+            `rootpath` and `subpaths`, ignoring `[#include]` in each INI.
 
-            If an ini file is NOT FOUND, or NOT READABLE,
-            then a `UserWarning` will be given and the file will be skipped.
+            - The `[#include]` DFS walk needs the assumption below ensured:
+                - ALL ini paths are based on a common parent directory,
+                like `D:/yr_Ares/` in the following paths:
+                    - root `D:/yr_Ares/rulesmd.ini`,
+                    - sub `D:/yr_Ares/rules_hotfix.ini`,
+                    - sub `D:/yr_Ares/Includes/rules_GDI.ini`.
+                - INIs should ALL be readable, without encrypted or mix packed.
+
+            If an ini file is NOT FOUND, or NOT READABLE, then
+            a `UserWarning` will be given and the file will be skipped.
         """
-        rootdir, stack = split(rootini_path)[0], [rootini_path]
+        rootdir, stack = split(rootpath)[0], [rootpath]
         ret = INIClass()
         while len(stack) > 0:
             try:
                 root = self.read(stack.pop())
             except OSError as e:
-                warnings.warn(f"INI tree may not correct: \n  {e}")
+                warn(f"INI tree may not correct: \n  {e}")
                 continue
             merger = Thread(target=self.__merge, args=(ret, root),
                             daemon=True)
             merger.start()
-            if '#include' in root:
+            if sequential:
+                stack.extend(reversed(subpaths))
+            elif '#include' in root:
                 _ = ThreadPool(len(root['#include']))
                 includes = _.map(lambda x: join(rootdir, x),
                                  root['#include'].values())
@@ -263,10 +275,10 @@ class INIParser:
 
     # in case we get bytes from file buffer ORDERLY,
     # implementing coroutines may not be very effective.
-    def read(self, ini_path) -> INIClass:
+    def read(self, inipath) -> INIClass:
         """Read from a single C&C ini."""
         ret, parser = INIClass(), None
-        with open(ini_path, 'rb') as fp:
+        with open(inipath, 'rb') as fp:
             buffer = b''
             while (i := fp.readline()) or buffer:
                 if i and not i.strip().startswith(b'['):
@@ -317,7 +329,7 @@ class INIParser:
                 continue
             entries[key] = raw_value.split(';', 1)[0].strip()
             if key == '+':
-                key = f"+{entries._keydiff - 1}"
+                key = f"+{entries.keyDiff - 1}"
             comment = raw_value.replace(entries[key], '', 1)
             if comment.strip() != '':
                 entries._add_inline_comment(key, comment)
@@ -375,7 +387,7 @@ class INIParser:
         fp.write('\n')
 
     @staticmethod
-    def write(doc: INIClass, ini_path, encoding='utf-8', *,
+    def write(doc: INIClass, inipath, encoding='utf-8', *,
               pairing='=', blankline=1):
         """Save as a C&C ini. (needs `await`)
 
@@ -383,7 +395,7 @@ class INIParser:
             pairing: how to connect key with value?
             blankline: how many lines between sections?
         """
-        with open(ini_path, 'w', encoding=encoding) as fp:
+        with open(inipath, 'w', encoding=encoding) as fp:
             INIParser.__write_entries(fp, doc.header, pairing, blankline)
             for k, v in doc.items():
                 INIParser.__write_section_decl(

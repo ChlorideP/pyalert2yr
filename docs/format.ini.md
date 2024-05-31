@@ -6,11 +6,11 @@
 ```python
 >>> import pyalert2yr.formats.ini as ini
 >>> ini.__all__
-['INIClass', 'INISection', 'iniTreeDFSWalk']
+['INIClass', 'INISection', 'INIParser']
 ```
 
 ## 前言
-其实 Python 有个读写 INI 的标准库`configparser`，但读起红红的 INI 就显得比较鸡肋：
+其实 Python 本有个读写 INI 的标准库`configparser`，但读起红红的 INI 就显得比较鸡肋：
 - 弹头的`Verses`值是对多个护甲的伤害修正比（`100%,10%,10%, ...`），读取可能引发`InterpolationError`。
 
 > 实际应为 Versus。西木头当年拼错了。
@@ -29,6 +29,7 @@
 但 INI 与标准 Dict 有一点不同：它有注释。为了避免注释内容丢失导致 Git 库里出现大段 Diff，`INISection`也设法实现了对注释的存储（但**不会对注释做任何修改**）。
 
 - `summary`字段：简介，即小节声明的尾随注释（比如`[A]  ;desc`的`; desc`）
+- `keyDiff`属性：`+=`项计数器。只读。~~至少找`+=`项时你不用再盲猜了。~~
 
 ```python
 class INISection(MutableMapping):
@@ -42,8 +43,8 @@ class INISection(MutableMapping):
         """初始化 INI 键值对字典。可以通过关键字参数从别处导入数据。"""
     def __setitem__(self, k: str, v: str):
         """实现 self[k] 存键值操作。
-        值得注意的是，若 k == '+'，则实际存入的键名会被替换为 +%d。
-        整数 %d 会从 0 开始逐渐累加。"""
+        值得注意的是，若 k == '+'，则实际存入的键名会被替换为 f'+{self.keyDiff}'。
+        该属性映射的私有字段会从 0 开始逐渐累加。"""
 
     # - 取、删除键值和计数操作不再详细列出。
     # - 对键值对的序列捕获（keys values items）和迭代操作（__iter__）
@@ -97,25 +98,29 @@ class INIParser:
     """用以读取某一棵 INI *树*，或是将 INI 字典写回某个 INI *文件*。"""
     def __init__(self):
         """无参。** 读 方法必须实例化该类方可调用**。"""
-    def dfsWalk(self, rootini_path) -> INIClass:
-        """ *试图*用深度优先方式读取 INI 树（这也是 Ares 的读法）。
+    def readTree(self, rootpath, *subpaths, sequential=False) -> INIClass:
+        """ *试图*读取某个 INI 序列（其中第一个为主文件，其余为子文件），
+        或是深度遍历 INI [#include] 树。
 
-        说“试图”是因为，遍历遵循的下面两条假设可能无法成立：
-        1. 所有 INI 均有共同的父目录：
-            - D:/yr_Ares/
-                - rulesmd.ini       [root]
-                - Includes/
-                    - rules_GDI.ini [sub: sub dir of root]
-                - rules_hotfix.ini  [sub: same dir with root]
-        2. 所有 INI 均可读（未被加密，未被打包进 MIX）。
-        一旦某 INI 无法找到，或者不可读，该方法就会弹出警告，并跳过不读该文件。"""
-    def read(self, ini_path) -> INIClass:
+        特别注意：
+        - 若 sequential 为 True, 则该方法只会依次读 rootpath 和 subpaths，
+        而不再考虑每个文件的 [#include]；
+
+        - 而对于 DFS 遍历树，需要满足以下两个条件：
+            - 所有 INI 必须有共同的父目录，比如下列文件中的 D:/yr_Ares：
+                - 根文件 `D:/yr_Ares/rulesmd.ini`,
+                - 子文件 `D:/yr_Ares/rules_hotfix.ini`,
+                - 子文件 `D:/yr_Ares/Includes/rules_GDI.ini`.
+            - 所有 INI 必须可读，即未被加密，也未被打包进 MIX 中。
+
+        无论是序列读取还是遍历 INI 树，一旦有文件找不到，或是无法读取，
+        方法将引发 UserWarning 警告，并忽略该文件继续往后读取。"""
+    def read(self, inipath) -> INIClass:
         """读取单个 INI 文件。"""
-        # 读方法不需要指定编码的原因是：
-        # 我是以'rb'方式打开的，读到的字节流会逐段解码。
+        # 读方法不需要指定编码，因为是以'rb'方式打开的，读到的字节流会逐段解码。
     @staticmethod
     def write(
-        doc: INIClass, ini_path, encoding='utf-8', *,
+        doc: INIClass, inipath, encoding='utf-8', *,
         pairing='=', blankline=1):
         """另存为一个 INI 文件。
 

@@ -15,8 +15,7 @@ from pyalert2yr.formats import ini, csf
 # TriggerID = ActionsCount, (a1_id,p1,p2,p3,p4,p5,p6,p7), ...
 text_trigger_actions = ['11', '103']
 
-mp = ini.INIClass()
-mp.read(input("MAP FILE PATH: "))
+mp = ini.INIParser().read(input("MAP FILE PATH: "))
 lang = csf.CsfFileParser(input("CSF FILE PATH: ")).read()
 
 for i, j in mp['Actions'].items():

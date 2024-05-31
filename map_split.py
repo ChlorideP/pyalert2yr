@@ -16,7 +16,7 @@ package binaries, which is Git friendly.
 from os.path import exists, join
 from struct import pack, unpack
 
-from .formats.ini import INIClass
+from .formats.ini import INIClass, INIParser
 
 
 def _ex_regs(map_: INIClass, registry, target: INIClass):
@@ -57,33 +57,33 @@ def splitMap(self: INIClass, out_dir: str):
     t = INIClass()
     _ex_regs(self, 'Houses', t)
     _ex_regs(self, 'Countries', t)
-    t.write(join(out_dir, 'houses.ini'), 'utf-8')
+    INIParser.write(t, join(out_dir, 'houses.ini'), 'utf-8')
     t.clear()
 
     _ex_regs(self, 'TaskForces', t)
     _ex_regs(self, 'ScriptTypes', t)
     _ex_regs(self, 'TeamTypes', t)
     _ex_entries(self, t, 'AITriggerTypes', 'AITriggerTypesEnable')
-    t.write(join(out_dir, 'AI_local.ini'), 'utf-8')
+    INIParser.write(t, join(out_dir, 'AI_local.ini'), 'utf-8')
     t.clear()
 
     _ex_entries(self, t,
                 'VariableNames', 'Triggers', 'Events', 'Actions', 'Tags')
-    t.write(join(out_dir, 'logics.ini'), 'utf-8')
+    INIParser.write(t, join(out_dir, 'logics.ini'), 'utf-8')
     t.clear()
 
     _ex_entries(self, t,
                 'Infantry', 'Units', 'Aircraft', 'Structures',
                 'Smudge', 'Terrain',
                 'CellTags', 'Waypoints')
-    t.write(join(out_dir, 'objects.ini'), 'utf-8')
+    INIParser.write(t, join(out_dir, 'objects.ini'), 'utf-8')
     t.clear()
 
     _ex_binaries(self, 'IsoMapPack5', join(out_dir, 'iso.mappkg'))
     _ex_binaries(self, 'OverlayPack', join(out_dir, 'ovl.mappkg'))
     _ex_binaries(self, 'OverlayDataPack', join(out_dir, 'ovldata.mappkg'))
 
-    self.write(join(out_dir, 'partial.ini'), 'utf-8')
+    INIParser.write(self, join(out_dir, 'partial.ini'), 'utf-8')
 
 
 def _im_binaries(target_map: INIClass, package_fn, target_section):
@@ -94,8 +94,8 @@ def _im_binaries(target_map: INIClass, package_fn, target_section):
             if not curpair:
                 break
             curpair = unpack('i70s', curpair)
-            target_map[target_section].update(
-                [(str(curpair[0]), curpair[1].decode().replace('\x00', ''))])
+            target_map[target_section].update({
+                str(curpair[0]): curpair[1].decode().replace('\x00', '')})
 
 
 def joinMap(src_dir, out_name):
@@ -110,12 +110,13 @@ def joinMap(src_dir, out_name):
     if not exists(join(src_dir, "partial.ini")):
         return
     out = INIClass()
-    out.read(join(src_dir, "partial.ini"),
-             join(src_dir, 'houses.ini'),
-             join(src_dir, 'AI_local.ini'),
-             join(src_dir, 'logics.ini'),
-             join(src_dir, 'objects.ini'))
+    INIParser.readTree(join(src_dir, "partial.ini"),
+                       join(src_dir, 'houses.ini'),
+                       join(src_dir, 'AI_local.ini'),
+                       join(src_dir, 'logics.ini'),
+                       join(src_dir, 'objects.ini'),
+                       sequential=True)
     _im_binaries(out, join(src_dir, 'iso.mappkg'), 'IsoMapPack5')
     _im_binaries(out, join(src_dir, 'ovl.mappkg'), 'OverlayPack')
     _im_binaries(out, join(src_dir, 'ovldata.mappkg'), 'OverlayDataPack')
-    out.write(join(src_dir, f"{out_name}.map"))
+    INIParser.write(out, join(src_dir, f"{out_name}.map"))
