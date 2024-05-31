@@ -5,12 +5,12 @@
 
 import logging
 
-from .formats.ini import INIClass, INISection, iniTreeDFSWalk
+from .formats.ini import INIClass, INISection, INIParser
 from .formats.csf import CsfDoc, CsfFileParser, CsfJsonV2Parser
 from .map_split import splitMap, joinMap
 
 __all__ = [
-    'INIClass', 'INISection', 'iniTreeDFSWalk',
+    'INIClass', 'INISection', 'INIParser',
     'CsfDoc', 'CsfFileParser', 'CsfJsonV2Parser',
     'splitMap', 'joinMap'
 ]
