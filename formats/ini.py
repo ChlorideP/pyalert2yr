@@ -157,18 +157,6 @@ class INIClass(MutableMapping[str, INISection]):
         self.__raw = dict(zip(sections, datas))
         return True
 
-    # def update(self,
-    #            section: str,
-    #            entries: INISection,
-    #            inherit: Optional[str] = None):
-    #     """To update (or append) a section with given infos."""
-    #     if section not in self.__raw:
-    #         self.__raw[section] = entries
-    #     else:
-    #         self.__raw[section].update(entries)
-    #     if inherit is not None:
-    #         self.inheritance[section] = inherit
-
     def update(self, another: 'INIClass'):
         """To merge `another` into self."""
         self.header.update(another.header)
@@ -197,9 +185,9 @@ class INIParser:
                 raw = fp.read()
                 codec = guess_codec(raw)
                 try:
-                    raw = raw.decode(codec['encoding'] if
-                                     codec is None or codec['confidence'] < 0.8
-                                     else 'utf-8')
+                    raw = raw.decode(
+                        'utf-8' if codec is None or codec['confidence'] < 0.8
+                        else codec['encoding'])
                 except UnicodeDecodeError:
                     raw = raw.decode('gbk')
             inidict = self._read(StringIO(raw))
