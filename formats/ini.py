@@ -107,16 +107,21 @@ class INIClass(MutableMapping[str, INISection]):
     def __len__(self) -> int:
         return self.__raw.__len__()
 
-    def recursiveFind(self, section, key) -> Sequence[Optional[str]]:
+    def findKey(self, section, key,
+                recursive=False) -> Sequence[Optional[str]]:
         """Start searching from a specific section.
 
-        If key not found and inheritance detected, then go further,
-        until the condition broken.
+        If key not found, inheritance detected and `recursive` is True,
+        then go further, until the condition broken.
 
         Returns:
-            - the name of section, which contains the given key,
-              or `None` if tracking stopped.
-            - its value (like `self[section][key]`), or `None`.
+            - if found: a tuple within
+                - section, which contains the key, its name
+                - the corresponding value
+            - if not found: a `(None, None)` tuple.
+            - if tracking stopped due to `recursive=False`: a tuple within
+                - section name or `None` (as mentioned above)
+                - `None`
         """
         value = None
         while True:
@@ -124,9 +129,18 @@ class INIClass(MutableMapping[str, INISection]):
                 value = self[section][key]
                 break
             section = self.inheritance.get(section)
-            if section is None:
+            if not recursive or section is None:
                 break
         return section, value
+
+    def add(self, section, entries: INISection = {},
+            inherit: str = None):
+        if section not in self.__raw:
+            self.__raw[section] = INISection(entries)
+        else:
+            self.__raw[section].update(entries)
+        if inherit is not None:
+            self.inheritance[section] = inherit
 
     def clear(self):
         self.inheritance.clear()
@@ -162,10 +176,7 @@ class INIClass(MutableMapping[str, INISection]):
         self.header.update(another.header)
         self.inheritance.update(another.inheritance)
         for decl, data in another.items():
-            if decl not in self.__raw:
-                self.__raw.update([(decl, data)])
-            else:
-                self.__raw[decl].update(data)
+            self.add(decl, data)
 
 
 class INIParser:

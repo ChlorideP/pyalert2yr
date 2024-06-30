@@ -70,10 +70,15 @@ class INIClass(MutableMapping):
     # 用小节名作为键的存、取、删、迭代、计数操作均不再赘述。
     # 唯一需要补充的是，删除小节时会*连带删除它的继承关系*。
 
-    def recursiveFind(self, section, key) -> Sequence[Optional[str]]:
-        """从某一子代小节开始，向上逐级查找某键。
+    def add(self, section, entries: Mapping[str, str] = {},
+            inherit: str = None):
+        """新建小节，但与 Python 默认的 __setitem__ 不同：
+        section 存在时，会将 entries 更新到已有的小节字典里，而不是覆盖。"""
+    def findKey(self, section, key, recursive=False) -> Sequence[Optional[str]]:
+        """查找某小节里的键值。若 recursive=True，且该小节找不到，则尝试向上逐级查找。
         - 若找到：返回（该键所在小节名，该键的值）二元组；
-        - 若没找到：返回 (None, None) 二元组。"""
+        - 若没找到：返回 (None, None) 二元组；
+        - 若有继承但查找中断：返回（上一级小节名，None）二元组。"""
     def rename(self, old, new):
         """重命名某小节。若没找到旧小节，或新小节已经存在，则返回 False。"""
     def update(self, another: INIClass):
