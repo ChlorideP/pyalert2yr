@@ -31,8 +31,8 @@
 class INISection(MutableMapping):
     """ INI 小节的字典*原则上*允许 str: str 键值对，
     但实际运行中并不会对数据类型做额外的验证。"""
-    def __init__(self, **pairs_to_import):
-        """初始化 INI 键值对字典。可以通过关键字参数从别处导入数据。"""
+    def __init__(self, pairs_to_import: Mapping[str, str] = None):
+        """初始化 INI 键值对字典。可以通过可选参数从别处导入数据。"""
     def __setitem__(self, k: str, v: str):
         """实现 self[k] 存键值操作。
         值得注意的是，若 k == '+'，则实际存入的键名会被替换为随机数。

@@ -15,7 +15,7 @@ from io import StringIO
 from multiprocessing.pool import ThreadPool
 from os.path import join, split
 from threading import Thread
-from typing import Iterator, MutableMapping, Optional, Sequence
+from typing import Iterator, Mapping, MutableMapping, Optional, Sequence
 from uuid import uuid1 as guid
 from warnings import warn
 
@@ -33,7 +33,7 @@ class INISection(MutableMapping[str, Optional[str]]):
     Note: you may have to do `toTypeList()` conversion
     to get access to `+=` items.
     """
-    def __init__(self, **pairs_to_import):
+    def __init__(self, pairs_to_import: Mapping[str, str] = None):
         """Init a dictionary of ini entries included by section."""
         self.__raw: MutableMapping[str, Optional[str]] = {}
         if pairs_to_import:
