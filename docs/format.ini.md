@@ -55,7 +55,7 @@ class INISection(MutableMapping):
 ## INI 文档
 `INIClass`维护整个 INI 文档（甚至一棵 INI 树），但**不负责对 ini 文件的读写**。
 
-- `inheritance`字段：继承关系字典，记录整个文档（树）的小节继承。  
+- `inherits`字段：继承关系字典，记录整个文档（树）的小节继承。  
   以[前言](#前言)为例，键为子代`Child`，值为亲代`Parent`。
 - `header`字段：文档头部“小节”，记录文件最开头游离在任何小节之外的键值对。
 
@@ -70,10 +70,9 @@ class INIClass(MutableMapping):
     # 用小节名作为键的存、取、删、迭代、计数操作均不再赘述。
     # 唯一需要补充的是，删除小节时会*连带删除它的继承关系*。
 
-    def add(self, section, entries: Mapping[str, str] = {},
-            inherit: str = None):
-        """新建小节，但与 Python 默认的 __setitem__ 不同：
-        section 存在时，会将 entries 更新到已有的小节字典里，而不是覆盖。"""
+    def setdefault(self, section, inherit: str = None):
+        """section 不在文档里就新增，否则无事发生；
+        若指定了 inherit 就新增（或覆盖）继承关系，否则无事发生。"""
     def findKey(self, section, key, recursive=False) -> Sequence[Optional[str]]:
         """查找某小节里的键值。若 recursive=True，且该小节找不到，则尝试向上逐级查找。
         - 若找到：返回（该键所在小节名，该键的值）二元组；

@@ -14,6 +14,7 @@ the standard lib `configparser` won't be suitable anymore.
 from io import StringIO
 from multiprocessing.pool import ThreadPool
 from os.path import join, split
+from queue import Queue
 from threading import Thread
 from typing import Iterator, Mapping, MutableMapping, Optional, Sequence
 from uuid import uuid1 as guid
@@ -85,7 +86,7 @@ class INIClass(MutableMapping[str, INISection]):
     def __init__(self):
         """Init an empty INI document."""
         self.__raw: MutableMapping[str, INISection] = {}
-        self.inheritance = {}
+        self.inherits = {}
         # still keep this header to
         # maintain pairs not belong to any section.
         self.header = INISection()
@@ -97,8 +98,8 @@ class INIClass(MutableMapping[str, INISection]):
         return self.__raw.__setitem__(key, value)
 
     def __delitem__(self, key: str) -> None:
-        if key in self.inheritance:
-            del self.inheritance[key]
+        if key in self.inherits:
+            del self.inherits[key]
         return self.__raw.__delitem__(key)
 
     def __iter__(self) -> Iterator:
@@ -128,22 +129,21 @@ class INIClass(MutableMapping[str, INISection]):
             if key in self[section]:
                 value = self[section][key]
                 break
-            section = self.inheritance.get(section)
+            section = self.inherits.get(section)
             if not recursive or section is None:
                 break
         return section, value
 
-    def add(self, section, entries: INISection = {},
-            inherit: str = None):
+    def setdefault(self, section, inherit: str = None):
+        """If `section` not in self, then add it;
+        if `inherit` is not None, then add (or override) it."""
         if section not in self.__raw:
-            self.__raw[section] = INISection(entries)
-        else:
-            self.__raw[section].update(entries)
+            self.__raw[section] = INISection()
         if inherit is not None:
-            self.inheritance[section] = inherit
+            self.inherits[section] = inherit
 
     def clear(self):
-        self.inheritance.clear()
+        self.inherits.clear()
         self.header.clear()
         self.__raw.clear()
 
@@ -164,22 +164,30 @@ class INIClass(MutableMapping[str, INISection]):
         sections, datas = list(self.keys()), list(self.values())
         oldidx = sections.index(old)
         sections[oldidx] = new
-        oldinherit = self.inheritance.get(old)
+        oldinherit = self.inherits.get(old)
         if oldinherit is not None:
-            del self.inheritance[old]
-            self.inheritance[new] = oldinherit
+            del self.inherits[old]
+            self.inherits[new] = oldinherit
         self.__raw = dict(zip(sections, datas))
         return True
 
     def update(self, another: 'INIClass'):
         """To merge `another` into self."""
         self.header.update(another.header)
-        self.inheritance.update(another.inheritance)
+        self.inherits.update(another.inherits)
         for decl, data in another.items():
             self.add(decl, data)
 
 
 class INIParser:
+    def __init__(self) -> None:
+        self.__mergequeue = Queue()
+
+    def __merge(self, ret: INIClass):
+        while True:
+            partial_doc = self.__mergequeue.get()
+            ret.update(partial_doc)
+
     def read(self, inipath, errmsg="INI tree may not correct: "):
         """Read from a single C&C ini.
 
@@ -190,21 +198,21 @@ class INIParser:
             You may have to instead call `_read`
             if you'd like to manually handle the `OSError`.
         """
-        inidict = None
         try:
             with open(inipath, 'rb') as fp:
                 raw = fp.read()
-                codec = guess_codec(raw)
-                try:
-                    raw = raw.decode(
-                        'utf-8' if codec is None or codec['confidence'] < 0.8
-                        else codec['encoding'])
-                except UnicodeDecodeError:
-                    raw = raw.decode('gbk')
-            inidict = self._read(StringIO(raw))
         except OSError as e:
             warn(f"{errmsg}\n  {e}")
-        return inidict
+            return None
+
+        try:
+            codec = guess_codec(raw)
+            if codec is None or codec['confidence'] < 0.8:
+                codec = {'encoding': 'utf-8'}
+            raw = raw.decode(codec)
+        except UnicodeDecodeError:
+            raw = raw.decode('gbk')
+        return self._read(StringIO(raw))
 
     def readTree(self, rootpath, *subpaths, sequential=False) -> INIClass:
         """Try to read a sequence of inis, or DFS walk an INI include tree.
@@ -223,25 +231,24 @@ class INIParser:
         """
         ret = INIClass()
         rootdir, stack = split(rootpath)[0], [self.read(rootpath)]
+        # use producer-consumer model instead of sequential creating thread.
+        merger = Thread(target=self.__merge, args=(ret,), daemon=True)
+        merger.start()
         while len(stack) > 0:
             if (root := stack.pop()) is None:
                 continue
-            merger = Thread(target=ret.update, args=(root,), daemon=True)
-            merger.start()
-            if sequential:
-                subpaths = dict(zip(range(len(subpaths)), subpaths))
-            elif '#include' in root:
-                subpaths = root['#include']
-            else:
+            if not sequential and '#include' in root:
+                subpaths = root['#include'].values()
+            if not subpaths:
                 continue
-            _ = ThreadPool(len(subpaths))
-            rootincs = _.map(lambda x: self.read(join(rootdir, x)),
-                             subpaths.values())
-            _.close()
-            _.join()
+            pool = ThreadPool(len(subpaths))
+            rootincs = pool.map(lambda x: self.read(join(rootdir, x)),
+                                subpaths)
+            pool.close()
+            pool.join()
             rootincs.reverse()
             stack.extend(rootincs)
-            merger.join()
+        merger.join()
         return ret
 
     def _read(self, buffer: StringIO) -> INIClass:
@@ -256,11 +263,9 @@ class INIParser:
             if i[0] == '[':
                 section = dict(zip(
                     ['decl', 'base'],
-                    [j.strip()[1:-1] for j in i.split(';')[0].split(':')]))
-                if (this_sect := ret.get(section['decl'])) is None:
-                    this_sect = ret[section['decl']] = INISection()
-                if section.get('base') is not None:
-                    ret.inheritance[section['decl']] = section['base']
+                    [j.strip()[1:-1] for j in i[:i.find(';')].split(':')]))
+                ret.setdefault(section['decl'], section.get('base'))
+                this_sect = ret[section['decl']]
             elif '=' in i:
                 key, val = i.split('=', 1)
                 key = key.strip()
@@ -283,7 +288,7 @@ class INIParser:
                 fp.write("\n" * blankline)
             for sect, data in doc.items():
                 fp.write(f'[{sect}]')
-                if (inherit := doc.inheritance.get(sect)) is not None:
+                if (inherit := doc.inherits.get(sect)) is not None:
                     fp.write(f':[{inherit}]')
                 fp.write('\n')
                 for key, val in data.items():
