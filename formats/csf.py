@@ -249,7 +249,7 @@ class CsfFileParser(CsfSerializer):
             h = self.__readheader(fp)
             i = 0
             while i < h.numlabels:
-                self.__readlabel(fp)
+                self.__readlabel(fp, ret)
                 i += 1
         return ret
 
