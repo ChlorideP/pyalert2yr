@@ -249,7 +249,7 @@ class CsfFileParser(CsfSerializer):
             h = self.__readheader(fp)
             i = 0
             while i < h.numlabels:
-                self.__readlabel(fp)
+                self.__readlabel(fp, ret)
                 i += 1
         return ret
 
@@ -318,6 +318,7 @@ class CsfJsonV2Parser(CsfSerializer):
             ret[k] = self.__fromjson(v)
         return ret
 
+    @staticmethod
     def __tojsonval(val: Union[CsfVal, List[CsfVal]]) -> dict:
         if isinstance(val, list):
             ret = {'values': [CsfJsonV2Parser.__tojsonval(i)
