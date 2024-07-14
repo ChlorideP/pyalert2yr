@@ -27,6 +27,10 @@
 ## INI 小节
 与标准库不同，`INISection`更倾向于 Dict 那样的设计。它不记录小节名，也不记录继承关系，纯纯的是个键值对字典。
 
+> [!warning]
+> V1 API 中的`find()`方法由于设计原因被废止。  
+> 继续调用将收到`NotImplementedError`。
+
 ```python
 class INISection(MutableMapping):
     """ INI 小节的字典*原则上*允许 str: str 键值对，
@@ -38,6 +42,9 @@ class INISection(MutableMapping):
         值得注意的是，若 k == '+'，则实际存入的键名会被替换为随机数。
         为避免碰撞，随机数取自 uuid1() 生成的第一段十六进制数。"""
         # 取、删除键值和计数操作不再详细列出。
+    def sortPairs(self, key=None, *, reverse=False):
+        """V1 API 的残余。
+        从内部帮你调用了`sorted(self)`，并根据排列结果重新组织键值字典。"""
     def toTypeList(self):
         """生成该小节的 *有序* *不重复* 值表。通常用于“注册表”。"""
 ```
@@ -73,17 +80,20 @@ class INIClass(MutableMapping):
     def setdefault(self, section, inherit: str = None):
         """section 不在文档里就新增，否则无事发生；
         若指定了 inherit 就新增（或覆盖）继承关系，否则无事发生。"""
+    def update(self, another: INIClass):
+        """将另一个 INI 文档合并过来。
+        此方法会复制继承关系、header 字段，并更新小节字典；
+        但对于两边同时存在的小节，将更新 self[section]。"""
     def findKey(self, section, key, recursive=False) -> Sequence[Optional[str]]:
         """查找某小节里的键值。若 recursive=True，且该小节找不到，则尝试向上逐级查找。
         - 若找到：返回（该键所在小节名，该键的值）二元组；
         - 若没找到：返回 (None, None) 二元组；
         - 若有继承但查找中断：返回（上一级小节名，None）二元组。"""
+    def getTypeList(self, section):
+        """对 V1 版本的 API 兼容。
+        若不存在小节返回空元组；反之返回该小节的有序去重值表。"""
     def rename(self, old, new):
         """重命名某小节。若没找到旧小节，或新小节已经存在，则返回 False。"""
-    def update(self, another: INIClass):
-        """将另一个 INI 文档合并过来。
-        此方法会复制继承关系、header 字段，并更新小节字典；
-        但对于两边同时存在的小节，将更新 self[section]。"""
 ```
 
 ## INI 读写
@@ -94,7 +104,7 @@ a.read(...)
 ```
 此外，长期以来我的 INI 读写都是同步的，姑且是打算提高一下并发度吧。
 
-> 当然实际上只在`readTree()`那里做了并发。对单个文件来说同步已足够快了。
+> 当然实际上只在`readTree()`那里做了并发。对单个文件来说同步应该足够快了。
 
 ### 读方法
 
@@ -115,20 +125,22 @@ a.read(...)
     
 **尝试**读取 INI 序列，或者深度优先（DFS）遍历 INI `[#include]`嵌套树，并将这些 INI 合并成一个`INIClass`文档实例。
 
-> 这里说“尝试”是因为，有一些 INI 文件可能被打包进 Mix，或是经加密处理。这些**无法读取的 INI 文件，可能会影响到合并后 INI 文档的完整性**。
+> 这里说“尝试”是因为，有一些 INI 文件可能被打包进 Mix，或是经加密处理。  
+> 咱的 INI 库显然对这些无法读取的 INI 文件束手无策。
 
-另外注意，其一，对于关键字`sequential`有两种情况：
-- 若为`True`，则只读取`rootpath`和`subpaths`，不再处理每个文件里的`[#include]`；
-- 若为`False`，则只遍历`rootpath`那棵嵌套树，不会接着读`subpaths`。
-
-其二，DFS 遍历遵循“同源”假设——即要求所有 INI 均处于同一级父目录之下：
-- 游戏根目录：`D:\AresYR\`
-    - INI 树根节点：`rulesmd.ini`
-    - 孩子节点：`rules_hotfix.ini`
-    - 子文件夹：`INIs\`
-        - 孩子节点：`rules_global.ini`
-        - ...
-    - ...
+> [!note]
+> 其一，对于关键字`sequential`有两种情况：
+> - 若为`True`，则只读取`rootpath`和`subpaths`，不再处理每个文件里的`> [#include]`；
+> - 若为`False`，则只遍历`rootpath`那棵嵌套树，不会接着读`subpaths`。
+> 
+> 其二，DFS 遍历遵循“同源”假设——即要求所有 INI 均处于同一级父目录之下：
+> - 游戏根目录：`D:\AresYR\`
+>     - INI 树根节点：`rulesmd.ini`
+>     - 孩子节点：`rules_hotfix.ini`
+>     - 子文件夹：`INIs\`
+>         - 孩子节点：`rules_global.ini`
+>         - ...
+>     - ...
 
 ### 写方法
 `write(doc, inipath, encoding='utf-8', *, pairing='=', blankline=1)`

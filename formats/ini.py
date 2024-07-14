@@ -11,12 +11,14 @@ Since Ares implemented new features of ini structure,
 the standard lib `configparser` won't be suitable anymore.
 """
 
+import logging
+from collections.abc import MutableMapping
 from io import StringIO
 from multiprocessing.pool import ThreadPool
 from os.path import join, split
 from queue import Queue
 from threading import Thread
-from typing import Iterator, Mapping, MutableMapping, Optional, Sequence
+from typing import Callable, Iterator, Mapping, Optional, Sequence
 from uuid import uuid1 as guid
 from warnings import warn
 
@@ -60,6 +62,28 @@ class INISection(MutableMapping[str, Optional[str]]):
     def __repr__(self) -> str:
         return self.__raw.__repr__()
 
+    def find(self, key):
+        """Deprecated now. Try `INIClass.findKey()`."""
+        raise NotImplementedError("The V1 APIs are now unsupported.")
+
+    def get(self, key, converter: Callable[[str], object] = str, default=None):
+        if converter is list:
+            return self.getlist(key)
+        elif converter is bool:
+            return self.getbool(key)
+        elif key not in self:
+            return default
+        else:
+            return converter(self[key])
+
+    # lazy to implement auto converter. just manual.
+    def getbool(self, key):
+        return (None if key not in self
+                else self[key] and self[key][0].lower() in ('1', 'y', 't'))
+
+    def getlist(self, key):
+        return () if key not in self else self[key].split(',')
+
     def toTypeList(self):
         """Collects a *ordered* values sequence, with elements *unique*.
 
@@ -77,6 +101,24 @@ class INISection(MutableMapping[str, Optional[str]]):
                 continue
             ret.append(i)
         return ret
+
+    def sortPairs(self, key=None, *, reverse=False):
+        """
+        Sort the key-value pairs in ascending order, just like sorted().
+
+        Hint:
+            Each pair will be packed into a (key, value) tuple.
+            You may find it easy to use interger index.
+
+        Examples:
+            - by value length:
+                `self.sortPairs(key=lambda x: len(x[1]))`
+            - by keys (make sure they are comparable):
+                `self.sortPairs(key=lambda x: x[0])
+        """
+        keys = sorted(self.__pairs.items(), key=key, reverse=reverse)
+        pairs = {k: self.__pairs.get(k) for k in keys}
+        self.__pairs = pairs
 
 
 class INIClass(MutableMapping[str, INISection]):
@@ -134,6 +176,14 @@ class INIClass(MutableMapping[str, INISection]):
                 break
         return section, value
 
+    def getTypeList(self, section):
+        """Deprecated now. Try `self[section].toTypeList()` instead."""
+        warn("The V1 APIs are now deprecated.", DeprecationWarning)
+        if section not in self:
+            return ()
+        else:
+            return self[section].toTypeList()
+
     def setdefault(self, section, inherit: str = None):
         """If `section` not in self, then add it;
         if `inherit` is not None, then add (or override) it."""
@@ -181,12 +231,12 @@ class INIClass(MutableMapping[str, INISection]):
 
 class INIParser:
     def __init__(self) -> None:
-        self.__mergequeue = Queue()
+        self.mergequeue = Queue()
 
     def __merge(self, ret: INIClass):
         while True:
-            partial_doc = self.__mergequeue.get()
-            ret.update(partial_doc)
+            subini = self.mergequeue.get()
+            ret.update(subini)
 
     def read(self, inipath, errmsg="INI tree may not correct: "):
         """Read from a single C&C ini.
@@ -202,7 +252,7 @@ class INIParser:
             with open(inipath, 'rb') as fp:
                 raw = fp.read()
         except OSError as e:
-            warn(f"{errmsg}\n  {e}")
+            logging.warning(f"{errmsg}\n  {e}")
             return None
 
         try:
@@ -237,6 +287,7 @@ class INIParser:
         while len(stack) > 0:
             if (root := stack.pop()) is None:
                 continue
+            self.mergequeue.put(root)
             if not sequential and '#include' in root:
                 subpaths = root['#include'].values()
             if not subpaths:
@@ -276,7 +327,7 @@ class INIParser:
     @staticmethod
     def write(doc: INIClass, inipath, encoding='utf-8', *,
               pairing='=', blankline=1):
-        """Save as a C&C ini. (needs `await`)
+        """Save as a C&C ini.
 
         Args:
             pairing: how to connect key with value?
