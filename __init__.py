@@ -3,17 +3,7 @@
 # @Time   : 2023/11/14 20:01:52
 # @Author : Chloride
 
-import logging
-
-from .formats.ini import INIClass, INISection, scanINITree
-from .formats.csf import CsfDoc, CsfFileParser, CsfJsonV2Parser
-from .map_split import splitMap, joinMap
-
-__all__ = [
-    'INIClass', 'INISection', 'scanINITree',
-    'CsfDoc', 'CsfFileParser', 'CsfJsonV2Parser',
-    'splitMap', 'joinMap'
-]
-
-logging.basicConfig(level=logging.INFO,
-                    format='[%(asctime)s] %(levelname)s: %(message)s')
+PKG_NAME = 'pyalert2yr'
+PKG_DESC = 'RA2 Map dev toolkits for Python 3.'
+PKG_URL = 'https://github.com/ChlorideP/pyalert2yr'
+__version__ = '3.0.0-dev241018'
