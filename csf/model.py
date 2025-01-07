@@ -75,12 +75,11 @@ class CsfDocument(MutableMapping[str, CsfVal]):
     def __len__(self) -> int:
         return self.__data.__len__()
 
-    def getAllValues(self, lbl: str) -> list[CsfVal]:
-        """Get whole values list associated with given label."""
+    def get_all_vals(self, lbl: str) -> list[CsfVal]:
+        """获取该 CSF 键的所有值"""
         return self.__data[lbl.upper()]
 
     def _items(self) -> zip[tuple[str, list[CsfVal]]]:
-        """Iterate for each label and corresponding values list."""
         return zip(self.__keyproxy.values(), self.__data.values())
 
     @property

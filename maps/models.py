@@ -123,7 +123,7 @@ class ActionsPointer(SerializedComponents[TriggerAction]):
     def length(self) -> int:
         return int(self.__raw[0])
 
-    def resetSeek(self) -> None:
+    def reset_seek(self) -> None:
         self._seek = 1
         self._curidx = 0
 
@@ -166,7 +166,7 @@ class EventsPointer(SerializedComponents[TriggerEvent]):
     def length(self) -> int:
         return int(self.__raw[0])
 
-    def resetSeek(self) -> None:
+    def reset_seek(self) -> None:
         self._seek = 1
         self._curidx = 0
 

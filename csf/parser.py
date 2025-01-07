@@ -22,18 +22,19 @@ from .model import CsfDocument, CsfHead, CsfVal
 
 
 class InvalidCsfRecord(Exception):
-    """To record errors when reading .CSF files."""
+    """表示读入的 CSF 文件本身有问题导致的异常。"""
     pass
 
 
 # should keep this base class for better type hinting.
 class CsfParser(FileHandler[CsfDocument]):
-    ...
+    pass
 
 
 class CsfFileParser(CsfParser):
     @staticmethod
-    def codingValue(valdata: bytearray | bytes) -> bytearray:
+    def coding_val(valdata: bytearray | bytes) -> bytearray:
+        """负责 CSF 值（游戏中出现的实际文本）的异或互转。"""
         # bytes would throw TypeError
         valdata = bytearray(valdata)
         i = 0
@@ -98,7 +99,7 @@ class CsfFileParser(CsfParser):
                 raise InvalidCsfRecord('CSF 值校验失败——文件可能已损坏。')
 
         length = unpack('L', fp.read(4))[0] << 1
-        data = CsfVal(value=self.codingValue(fp.read(length)).decode('utf-16'))
+        data = CsfVal(value=self.coding_val(fp.read(length)).decode('utf-16'))
         if is_eval:
             elength = unpack('L', fp.read(4))[0]
             data.extra = fp.read(elength).decode('ascii')
@@ -122,7 +123,7 @@ class CsfFileParser(CsfParser):
             f'<4sL{len_v << 1}s',
             (CsfMark.IS_EVAL if val.extra else CsfMark.IS_VAL).encode('ascii'),
             len_v,
-            self.codingValue(val.value.encode('utf-16'))[2:]))
+            self.coding_val(val.value.encode('utf-16'))[2:]))
         if val.extra is not None and (len_e := len(val.extra)) > 0:
             fp.write(pack(f'<L{len_e}s', len_e, val.extra.encode('ascii')))
 
@@ -217,7 +218,7 @@ class CsfJsonV2Parser(CsfParser):
         return ret
 
     def write(self, _csf: CsfDocument, indent: int = 2) -> None:
-        """Convert to Shimakaze Csf-JSON v2 Document."""
+        """保存为 Shimakaze Csf-JSON v2 文档."""
         ret = self.JSON_TEMPLATE.copy()
         ret['version'] = _csf.version
         ret['language'] = _csf.language
@@ -235,8 +236,7 @@ class CsfJsonV2Parser(CsfParser):
 # may need to simplify the V1 implements,
 # but I didn't really use XML. just keep it now.
 class CsfXmlParser(CsfParser):
-    """Since the encoding of xml is limited,
-    this serializer would only supports 'utf-8'."""
+    """CSF <-> XML 转换器。仅支持 UTF-8 编码。"""
 
     XML_SCHEMA_TYPENS = 'http://www.w3.org/2001/XMLSchema'
     XML_MODEL = (
@@ -285,8 +285,7 @@ class CsfXmlParser(CsfParser):
                 self.__to_val(ei, i)
 
     def write(self, _csf: CsfDocument, indent: str = '\t') -> None:
-        """Convert to Shimakaze Csf-XML V1 Document.
-        Only `utf-8` supported."""
+        """转换为 Shimakaze Csf-XML V1 格式、UTF-8 编码的 XML 文档。"""
         root = et.Element('Resources', {'protocol': '1',
                                         'version': str(_csf.version),
                                         'language': str(_csf.language)})
@@ -310,12 +309,13 @@ class _YamlMetaPack(TypedDict):
 
 
 class CsfLLangParser(CsfParser):
-    """Due to complex implements of YAML signs,
-    there is also LLF which is similar to YAML,
-    but way more convenient for RA2 modders.
+    """CSF <-> LLF / YAML 转换器
 
-    Thanks to the following contributors to new lang file format:
-    `Mr.L` & `TwinkleStar`."""
+    本项目的 YAML 转换在 Shimakaze 的格式基础上做了简化，*只会导出“键: 值”这种最常用的形式*。
+    但由于 YAML 的符号系统对于 CSF 表示仍然比较复杂，Mr.L 在它的基础上另设计了更简便的 LLF 文档。
+
+    注意：该转换器默认采取 LLF 的读写方式。
+    """
     YAML_SPECIAL_SIGNS_1 = [
         '_', '?', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|',
         '>', '"', '%', ':'
@@ -333,8 +333,9 @@ class CsfLLangParser(CsfParser):
             filename: str,
             encoding: str = "utf-8", *,
             yaml_compat: bool = False) -> None:
-        """The keyword `yaml_compat` means that,
-        just read the file as a normal YAML, otherwise read it as LLF."""
+        """默认初始化 LLF 文件的转换器。
+        如需保留 Shimakaze 格式的兼容，还请指定`yaml_compat`关键字。
+        """
         super().__init__(filename)
         self._codec = encoding
         self._is_yaml = yaml_compat
@@ -349,7 +350,7 @@ class CsfLLangParser(CsfParser):
             # which is why LLF was designed (too much special signs for L10N).
             mulline = '|-\n' if self._is_yaml else '>-\n'
             # LLF force 2-space indent, unable to adjust.
-            lineindent = f'\n{indent * ' '}' if self._is_yaml else '\n  '
+            lineindent = f'\n{indent * " "}' if self._is_yaml else '\n  '
             v = (mulline + v).replace('\n', lineindent)
         if not self._is_yaml:
             return k, v
@@ -413,7 +414,10 @@ class CsfLLangParser(CsfParser):
         return ret
 
     def write(self, _csf: CsfDocument, indent: int = 2) -> None:
-        """Convert to yaml file."""
+        """保存为 LLF 或 Shimakaze Csf-Yaml 文档。
+
+        注：LLF 文档强制两空格缩进，无需指定`indent`参数。
+        """
         # manual dump as the pyyaml output is too ugly
         curtime = strftime("%Y-%m-%d %H:%M:%S", localtime())
         with open(self._fn, 'w', encoding=self._codec) as fp:
@@ -434,3 +438,7 @@ class CsfLLangParser(CsfParser):
             )
             for k, v in _csf._items():
                 fp.write('%s: %s\n' % self.__to_pairs(k, v[0].value, indent))
+
+    def __str__(self) -> str:
+        return (f"{self._fn} "
+                f"({'Shimakaze Yaml' if self._is_yaml else 'LLF'} Document)")

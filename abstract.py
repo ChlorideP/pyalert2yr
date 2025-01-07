@@ -11,7 +11,7 @@ T = TypeVar('T')
 
 class SerializedComponents[T](metaclass=ABCMeta):
     @abstractmethod
-    def resetSeek(self) -> None:
+    def reset_seek(self) -> None:
         raise NotImplementedError
 
     @property
@@ -44,3 +44,6 @@ class FileHandler[T](metaclass=ABCMeta):
     @abstractmethod
     def write(self, instance: T) -> None:
         raise NotImplementedError
+
+    def __str__(self) -> str:
+        return self._fn
