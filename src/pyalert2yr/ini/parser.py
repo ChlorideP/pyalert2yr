@@ -25,7 +25,7 @@ Like this case:
 
 from io import StringIO, TextIOBase
 from os import PathLike
-from os.path import split, join
+from os.path import split, join, exists
 from multiprocessing.pool import Pool, ThreadPool
 from warnings import warn
 
@@ -41,22 +41,24 @@ class IniParser(FileHandler[IniClass]):
         self._codec = encoding
 
     @staticmethod
-    def readstream(buf: TextIOBase) -> IniClass:
+    def readstream(buf: TextIOBase, ins: IniClass | None = None) -> IniClass:
         """读取解码好的字符串流。
 
         如没有特殊需求，直接调用`self.read()`便是。
         """
-        ret = IniClass()
-        this_sect = ret.header
+        if ins is None:
+            ins = IniClass()
+        this_sect = ins.header
         while i := buf.readline():
             if i[0] == '[':
                 section = dict(zip(
                     ['decl', 'base'],
                     [j.strip()[1:-1] for j in i[:i.find(';')].split(':')])
                 )
-                this_sect = ret.setdefault(section['decl'], {})
+                this_sect = ins.setdefault(section['decl'], {})
                 # always update inheritance
-                ret.inherits[section['decl']] = [section['base']]
+                if 'base' in section:
+                    ins.inherits[section['decl']] = [section['base']]
             elif '=' in i:
                 key, val = i.split('=', 1)
                 key = key.strip()
@@ -65,10 +67,10 @@ class IniParser(FileHandler[IniClass]):
                     if key == '$Inherits':
                         # override with Phobos inherit
                         # since Phobos overrides Ares one.
-                        ret.inherits[section['decl']] = [
+                        ins.inherits[section['decl']] = [
                             j.strip() for j in this_sect[key].split(',')
                         ]
-        return ret
+        return ins
 
     @staticmethod
     def _decode_file(filename: str) -> StringIO:
@@ -100,21 +102,21 @@ class IniParser(FileHandler[IniClass]):
         except UnicodeDecodeError:
             return self.readstream(self._decode_file(self._fn))
 
-    def __section2str(
-        self, section: IniSectionMeta,
+    def __output_section(
+        self, meta: IniSectionMeta,
         use_phobos: bool = False, delimiter: str = '='
     ) -> str:
-        ret = f'[{section["section"]}]'
-        if section['parents'] is not None:
+        ret = f'[{meta["section"]}]'
+        if meta['parents'] is not None:
             if use_phobos:
-                section['pairs']['$Inherits'] = ','.join(section["parents"])
-            elif len(section['parents']) > 2:
+                meta['pairs']['$Inherits'] = ','.join(meta["parents"])
+            elif len(meta['parents']) > 2:
                 warn(
                     '你并未选择按 Phobos 方式保存，'
-                    f'但 {ret} 中不止一个父小节：{section['parents']}。')
+                    f'但 {ret} 中不止一个父小节：{meta['parents']}。')
             else:
-                ret += f':[{section["parents"][0]}]'
-        for k, v in section['pairs'].items():
+                ret += f':[{meta["parents"][0]}]'
+        for k, v in meta['pairs'].items():
             ret += f'\n{k}{delimiter}{v}'
         return ret
 
@@ -134,7 +136,7 @@ class IniParser(FileHandler[IniClass]):
         # may be able to use some async/multiprocessing/threading stuffs.
         pool = Pool()
         buffers = pool.map(
-            lambda x: self.__section2str(
+            lambda x: self.__output_section(
                 instance._get_meta(x), use_phobos, delimiter),
             instance.keys()
         )
@@ -154,26 +156,26 @@ class IniTreeParser(IniParser):
         super().__init__(rootfile, encoding)
         self._root = split(rootfile)[0]
 
-    # TODO
-    # 讲道理 边读边合并很慢
-    # 全都读进来再按顺序合并好像也快不到哪去。
-    # 当然这种直接扫文件的读取相比遍历树还是足够仁慈。
-    def readfiles(self, *splited_stub: str) -> IniClass:
+    def readfiles(
+        self,
+        instance: IniClass | None = None,
+        *splited_stub: str
+    ) -> IniClass:
         """除读取`IniTreeParser`实例指定的文件之外，
         还依次读取`splited_stub`里的拆分 INI（不一定是因为`[#include]`）。
 
         注：拆分 INI 需要传入*绝对路径*。本方法并不会假定这些分片的位置。
         """
-        return IniClass()
+        # 同步读，最简单的一集
+        # 主要 Python 的异步 IO 全是基于网络的 (aiohttps, ...)，文件的基础设施不得行
+        # 当然我是可以考虑线程池之类的，但……可能比同步还慢。
+        if instance is None:
+            instance = super().read()
+        for i in splited_stub:
+            self.readstream(self._decode_file(join(self._root, i)), instance)
+        return instance
 
-    # TODO
-    # 树就很要命了。它允许重复值...
-    # 有一说一，实际合并是“后者优先”吧。
-    def read(
-        self, *,
-        search_includes: bool = True,
-        bfs: bool = False
-    ) -> IniClass:
+    def read(self, *, bfs: bool = False) -> IniClass:
         """读取`IniParser`实例指定的文件。
 
         默认情况下会根据`[#include]`记录的相对路径，深度优先搜索拆分 INI。
@@ -183,4 +185,25 @@ class IniTreeParser(IniParser):
         由于与 Ares 官方文档和 Phobos 文档介绍的读取顺序相左，本方法默认不启用这种搜索模式，
         你可以指定`bfs=True`自行切换。
         """
-        return IniClass()
+        ret = super().read()
+        if '#include' not in ret:
+            return ret
+        stack, root = list(ret['#include'].values()), [self._root]
+        stack.reverse()
+        while stack:
+            i = join(root[-1], stack.pop())
+            root.append(split(i)[0])
+            if not exists(i):
+                warn(f'在读取`{self._fn}`时，未找到`{i}`。')
+                root.pop()
+                continue
+            ret['#include'].clear()
+            ret = self.readfiles(ret, i)
+            _ = list(ret['#include'].values())
+            _.reverse()
+            if bfs:
+                stack = _ + stack
+            else:
+                stack.extend(_)
+            root.pop()
+        return ret

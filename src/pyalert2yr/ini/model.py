@@ -184,11 +184,21 @@ class IniClass(MutableMapping[str, IniSectionProxy]):
         return iter(self.__raw_dicts)
 
     def _get_meta(self, key: str) -> IniSectionMeta:
+        """for IniParser.write()."""
         return IniSectionMeta(
             section=key,
             pairs=self.__raw_dicts[key],
             parents=self.__inherits.get(key)
         )
+
+    def _set_meta(self, meta: IniSectionMeta) -> None:
+        """for IniTreeParser reading."""
+        if meta['section'] not in self.__raw_dicts:
+            self.__raw_dicts[meta['section']] = meta['pairs'].copy()
+        else:
+            self.__raw_dicts[meta['section']].update(meta['pairs'])
+        if meta['parents']:  # not None not empty
+            self.inherits[meta['section']] = meta['parents']
 
     def __traverse_parents(self, key: str) -> Generator[tuple[
         str,
@@ -202,9 +212,7 @@ class IniClass(MutableMapping[str, IniSectionProxy]):
                 warn(f'[{key}] 存在父小节 "{i}"，但当前文档中找不到它。')
                 continue
             yield i, self.__raw_dicts[i]
-            _ = self.__inherits.get(i, [])
-            _.reverse()
-            stack.extend(_)
+            stack.extend(reversed(self.__inherits.get(i, [])))
         return
 
     def setdefault(
