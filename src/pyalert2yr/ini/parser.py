@@ -178,7 +178,7 @@ class IniTreeParser(IniParser):
     def read(self, *, bfs: bool = False) -> IniClass:
         """读取`IniParser`实例指定的文件。
 
-        默认情况下会根据`[#include]`记录的相对路径，深度优先搜索拆分 INI。
+        默认情况下会根据`[#include]`记录的相对（游戏目录的）路径，深度优先搜索拆分 INI。
         （所以本模块假设所有 INI 均位于同一个文件夹之下）
 
         另有 modder 发现拆分 INI 是按层级顺序依次读取（或者说，广度优先搜索）。
@@ -188,14 +188,12 @@ class IniTreeParser(IniParser):
         ret = super().read()
         if '#include' not in ret:
             return ret
-        stack, root = list(ret['#include'].values()), [self._root]
+        stack = list(ret['#include'].values())
         stack.reverse()
         while stack:
-            i = join(root[-1], stack.pop())
-            root.append(split(i)[0])
+            i = join(self._root, stack.pop())
             if not exists(i):
                 warn(f'在读取`{self._fn}`时，未找到`{i}`。')
-                root.pop()
                 continue
             ret['#include'].clear()
             ret = self.readfiles(ret, i)
@@ -205,5 +203,4 @@ class IniTreeParser(IniParser):
                 stack = _ + stack
             else:
                 stack.extend(_)
-            root.pop()
         return ret
